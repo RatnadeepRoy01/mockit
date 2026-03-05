@@ -7,6 +7,8 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useRouter } from 'next/navigation';
 import { PricingModal } from '@/components/PricingModal';
 import { supabase } from '@/lib/supabaseClient';
+import { AddProjectModal } from '@/components/projectDialog';
+import { toast } from 'sonner';
 
 const Canvas = dynamic(() => import('@/components/Canvas'), { ssr: false });
 const Sidebar = dynamic(() => import('@/components/Sidebar'), { ssr: false });
@@ -21,6 +23,7 @@ function mapProjectData(
     setMessages: (messages: AppMessage[]) => void,
     setIsAiLoading: (loading: boolean) => void
 ) {
+
     if (data.content?.html) {
         setScreens(data.content.html.map((item, i) => ({
             id: item.name,
@@ -59,6 +62,7 @@ export default function ProjectPage({ params: paramsPromise }: { params: Promise
     const setMessages = useAppStore(state => state.setMessages);
     const { user, loading } = useAuthStore();
     const [isOpen, setIsOpen] = useState(false);
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(false); // Mobile toggle
     const router = useRouter();
 
@@ -67,11 +71,17 @@ export default function ProjectPage({ params: paramsPromise }: { params: Promise
     }, [user, loading, router]);
 
     useEffect(() => {
+
         if (!id || !user) return;
 
         setProjectId(id);
         supabase.from('projects').select('*').eq('id', id).single().then(({ data, error }) => {
-            if (data && !error) mapProjectData(data, setScreens, setMessages, setIsAiLoading);
+            if (data && !error) {
+                mapProjectData(data, setScreens, setMessages, setIsAiLoading);
+            } else {
+                console.error('Project not found or error:', error);
+                setIsAddModalOpen(true);
+            }
         });
 
         const channel = supabase
@@ -83,6 +93,25 @@ export default function ProjectPage({ params: paramsPromise }: { params: Promise
 
         return () => { supabase.removeChannel(channel); };
     }, [id, user, setProjectId, setScreens, setIsAiLoading, setMessages]);
+
+    const handleAddProject = async (name: string) => {
+        if (!user) return;
+        try {
+            const { data, error } = await supabase
+                .from('projects')
+                .insert([{ name, user_id: user.id, content: {}, processing: false }])
+                .select()
+                .single();
+
+            if (data && !error) {
+                toast.success(`"${name}" created`);
+                router.push(`/projects/${data.id}`);
+            }
+            setIsAddModalOpen(false);
+        } catch {
+            toast.error('Failed to create project');
+        }
+    };
 
     if (loading) return (
         <div className={`flex items-center justify-center h-screen ${theme === 'dark' ? 'bg-[#0d0d14]' : 'bg-[#f5f3ff]'}`}>
@@ -124,6 +153,11 @@ export default function ProjectPage({ params: paramsPromise }: { params: Promise
 
             <ProjectSidebar isOpen={isProjectSidebarOpen} onOpenChange={setIsProjectSidebarOpen} />
             <HtmlViewModal />
+            <AddProjectModal
+                isOpen={isAddModalOpen}
+                onClose={() => setIsAddModalOpen(false)}
+                onAdd={handleAddProject}
+            />
         </main>
     );
 }

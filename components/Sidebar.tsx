@@ -68,7 +68,6 @@ function PromptPanel({ projectId }: { projectId: string }) {
         try {
             // If a screen is selected, use its name for the update flow
             let res = await callAI(projectId, text, selectedScreen?.id || undefined);
-            console.log('AI response:', { res });
         } catch (err: any) {
             console.error('Error in generation loop:', err);
             addMessage({ role: 'assistant', content: `Error: ${err.message || 'Failed to process request'}` });

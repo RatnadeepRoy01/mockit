@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuthStore } from '@/store/useAuthStore';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface Project {
   id: string;
@@ -26,6 +27,7 @@ export function ProjectSidebar({ isOpen, onOpenChange, onProjectSelect }: Projec
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { user } = useAuthStore();
+  const router = useRouter();
 
   useEffect(() => {
     if (isOpen && user) fetchProjects();
@@ -64,6 +66,8 @@ export function ProjectSidebar({ isOpen, onOpenChange, onProjectSelect }: Projec
         setProjects((prev) => [data, ...prev]);
         toast.success(`"${name}" created`);
         onProjectSelect?.(data.id);
+        router.push(`/projects/${data.id}`);
+        onOpenChange(false);
       }
       setIsModalOpen(false);
     } catch {
