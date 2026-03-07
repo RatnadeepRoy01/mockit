@@ -31,7 +31,7 @@ Return ONE of these two shapes, never both:
       }
     ]
   },
-  { "text": "your helpful reply here" }
+  "text": "your helpful reply here"
 }
 
 ────────────────────────────────────────
@@ -304,7 +304,7 @@ OUTPUT JSON SHAPE (screen request only)
       }
     ]
   },
-  { "text": "your helpful reply here" }
+  "text": "your helpful reply here"
 }
 ────────────────────────────────────────
 NAMING RULE

@@ -71,8 +71,6 @@ function PromptPanel({ projectId }: { projectId: string }) {
         } catch (err: any) {
             console.error('Error in generation loop:', err);
             addMessage({ role: 'assistant', content: `Error: ${err.message || 'Failed to process request'}` });
-        } finally {
-            setIsAiLoading(false);
         }
     }, [input, isAiLoading, addMessage, setIsAiLoading, projectId, selectedScreen]);
 
