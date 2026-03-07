@@ -57,11 +57,11 @@ class CanvasErrorBoundary extends Component<
 }
 
 /* ─── Picker script ──────────────────────────────────────────────────────────── */
-function buildPickerScript(screenId: string, initialActive: boolean): string {
+function buildPickerScript(screenId: string): string {
     return `
 (function() {
-  // Always set the current active state (passed from React at injection time)
-  window.__mockitPickerActive = ${initialActive};
+  // Always start inactive — isEditing useEffect will activate if needed
+  window.__mockitPickerActive = false;
 
   function clearHighlights() {
     document.querySelectorAll('[data-mk-sel]').forEach(function(n) {
@@ -73,6 +73,7 @@ function buildPickerScript(screenId: string, initialActive: boolean): string {
     });
   }
 
+  // DOCUMENT-level listener: always re-attach on every injection.
   document.addEventListener('click', function(e) {
     if (!window.__mockitPickerActive) return;
     e.preventDefault(); e.stopPropagation();
@@ -111,9 +112,10 @@ function buildPickerScript(screenId: string, initialActive: boolean): string {
     }, '*');
   }, true);
 
-  if (!window.__mockitMessageListenerAdded) {
-    window.__mockitMessageListenerAdded = true;
-    window.addEventListener('message', function(e) {
+  if (window.__mockitMessageHandler) {
+    window.removeEventListener('message', window.__mockitMessageHandler);
+  }
+  window.__mockitMessageHandler = function(e) {
     if (!e.data || e.data.screenId !== '${screenId}') return;
     if (e.data.type === '__mockit_set_picker__') {
       window.__mockitPickerActive = !!e.data.active;
@@ -137,11 +139,12 @@ function buildPickerScript(screenId: string, initialActive: boolean): string {
         html: '<!DOCTYPE html>\\n' + document.documentElement.outerHTML,
       }, '*');
     }
-  });
-}
+  };
+  window.addEventListener('message', window.__mockitMessageHandler);
 })();
 `.trim();
 }
+
 function buildHeightScript(screenId: string): string {
     return `
 (function() {
@@ -189,11 +192,10 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
         const doc = iframeRef.current?.contentDocument;
         if (!doc?.head) return;
 
-        // Remove stale script tags before re-injecting (deduplication at DOM level)
         doc.querySelectorAll('[data-mk-script]').forEach(n => n.remove());
         const ps = doc.createElement('script');
         ps.setAttribute('data-mk-script', 'true');
-        ps.textContent = buildPickerScript(screen.id, isEditingRef.current);
+        ps.textContent = buildPickerScript(screen.id);
         doc.head.appendChild(ps);
 
         doc.querySelectorAll('[data-mk-height]').forEach(n => n.remove());
@@ -201,12 +203,14 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
         hs.setAttribute('data-mk-height', 'true');
         hs.textContent = buildHeightScript(screen.id);
         doc.head.appendChild(hs);
+
         iframeRef.current?.contentWindow?.postMessage(
             { type: '__mockit_set_picker__', screenId: screen.id, active: isEditingRef.current }, '*'
         );
     }, [screen.id]);
 
     useEffect(() => {
+
         if (skipRewriteRef.current) { skipRewriteRef.current = false; return; }
         const iframe = iframeRef.current;
         const doc = iframe?.contentDocument;
@@ -238,11 +242,11 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
     }, [screen.html, injectScripts]);
 
     // ── sync picker active state whenever isEditing changes ──
-    // useEffect(() => {
-    //     iframeRef.current?.contentWindow?.postMessage(
-    //         { type: '__mockit_set_picker__', screenId: screen.id, active: isEditing }, '*'
-    //     );
-    // }, [isEditing, screen.id]);
+    useEffect(() => {
+        iframeRef.current?.contentWindow?.postMessage(
+            { type: '__mockit_set_picker__', screenId: screen.id, active: isEditing }, '*'
+        );
+    }, [isEditing, screen.id]);
 
     // ── parent-side message handler ──
     useEffect(() => {
