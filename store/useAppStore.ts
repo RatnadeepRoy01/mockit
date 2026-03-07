@@ -204,7 +204,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ── Chat ──
   messages: [
     {
-      id: 'm0',
+      id: 'msg-0',
       role: 'assistant',
       content:
         "Hi! I'm your AI design assistant. Describe what screens you'd like to generate and I'll build them for you.\n\nYou can also switch to **Element Editor** mode to visually tweak any element on the canvas.",
@@ -215,7 +215,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       messages: [
         ...state.messages,
-        { ...msg, id: `m${Date.now()}`, timestamp: Date.now() },
+        { ...msg, id: `msg-${state.messages.length}`, timestamp: Date.now() },
       ],
     })),
 

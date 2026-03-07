@@ -49,7 +49,16 @@ serve(async (req) => {
 
       if (error) throw new Error(`Failed to create job: ${error.message}`)
 
-      await supabase.from('projects').update({ processing: true }).eq('id', projectId)
+      await supabase.from('projects').update({
+        processing: true,
+        content: {
+          ...(project?.content || {}),
+          prompt: [
+            ...(project?.content?.prompt || []),
+            { role: 'user', text: body.prompt }
+          ]
+        }
+      }).eq('id', projectId)
       console.log(`[TRIGGER] Job ${job.id} created type=${type}`)
 
       return new Response(
@@ -114,7 +123,7 @@ serve(async (req) => {
           'Authorization': `Bearer ${Deno.env.get('GROQ_API_KEY')}`,
         },
         body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
+          model: 'llama-3.1-8b-instant',
           max_tokens: 16000,
           messages: [
             { role: 'system', content: systemMsg.trim() },
@@ -174,7 +183,6 @@ serve(async (req) => {
         html: updatedHtml,
         prompt: [
           ...(content.prompt || []),
-          ...(iteration === 0 ? [{ role: 'user', text: prompt }] : []),
           ...(text ? [{ role: 'ai', text }] : []),
         ],
       },

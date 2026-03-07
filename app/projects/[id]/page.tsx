@@ -17,14 +17,28 @@ const HtmlViewModal = dynamic(() => import('@/components/HtmlViewModal'), { ssr:
 const ProjectSidebar = dynamic(() => import('@/components/projectSideBar').then(m => ({ default: m.ProjectSidebar })), { ssr: false });
 
 
+// ── Stable hash to avoid redundant updates ──────────────────────────────────
+let lastDataVersion = "";
+
+const welcomeMsg: AppMessage = {
+    id: 'msg-0',
+    role: 'assistant',
+    content: "Hi! I'm your AI design assistant. Describe what screens you'd like to generate and I'll build them for you.\n\nYou can also switch to **Element Editor** mode to visually tweak any element on the canvas.",
+    timestamp: 0,
+};
+
 function mapProjectData(
     data: SupabaseProject,
     setScreens: (screens: AppScreen[]) => void,
     setMessages: (messages: AppMessage[]) => void,
     setIsAiLoading: (loading: boolean) => void
 ) {
+    // Basic structural hash to see if content changed
+    const version = `${data.updated_at}-${data.processing}-${JSON.stringify(data.content || {})}`;
+    if (version === lastDataVersion) return;
+    lastDataVersion = version;
 
-    if (data.content?.html) {
+    if (data.content?.html && data.content.html.length > 0) {
         setScreens(data.content.html.map((item, i) => ({
             id: item.name,
             html: item.code,
@@ -33,19 +47,16 @@ function mapProjectData(
             width: 920,
             height: 580,
         })));
-    } else {
-        setScreens([])
     }
 
-    if (data.content?.prompt) {
-        setMessages(data.content.prompt.map((m, i) => ({
-            id: `msg-${i}-${Date.now()}`,
-            role: m.role === 'ai' ? 'assistant' : 'user',
+    if (data.content?.prompt && data.content.prompt.length > 0) {
+        const dbMsgs = data.content.prompt.map((m, i) => ({
+            id: `msg-${i + 1}`,
+            role: (m.role === 'ai') ? 'assistant' as const : 'user' as const,
             content: m.text,
-            timestamp: Date.now(),
-        })));
-    } else {
-        setMessages([])
+            timestamp: 0,
+        }));
+        setMessages([welcomeMsg, ...dbMsgs]);
     }
 
     setIsAiLoading(data.processing || false);
@@ -56,6 +67,7 @@ export default function ProjectPage({ params: paramsPromise }: { params: Promise
     const isProjectSidebarOpen = useAppStore(state => state.isProjectSidebarOpen);
     const setIsProjectSidebarOpen = useAppStore(state => state.setIsProjectSidebarOpen);
     const theme = useAppStore(state => state.theme);
+    const projectId = useAppStore(state => state.projectId);
     const setProjectId = useAppStore(state => state.setProjectId);
     const setScreens = useAppStore(state => state.setScreens);
     const setIsAiLoading = useAppStore(state => state.setIsAiLoading);
@@ -74,7 +86,12 @@ export default function ProjectPage({ params: paramsPromise }: { params: Promise
 
         if (!id || !user) return;
 
-        setProjectId(id);
+        if (id != projectId) {
+            setProjectId(id);
+            setScreens([]);
+            setMessages([welcomeMsg]);
+            setIsAiLoading(false);
+        }
         supabase.from('projects').select('*').eq('id', id).single().then(({ data, error }) => {
             if (data && !error) {
                 mapProjectData(data, setScreens, setMessages, setIsAiLoading);

@@ -57,12 +57,11 @@ class CanvasErrorBoundary extends Component<
 }
 
 /* ─── Picker script ──────────────────────────────────────────────────────────── */
-function buildPickerScript(screenId: string): string {
+function buildPickerScript(screenId: string, initialActive: boolean): string {
     return `
 (function() {
-  if (window.__mockitInjected) return;
-  window.__mockitInjected = true;
-  window.__mockitPickerActive = false;
+  // Always set the current active state (passed from React at injection time)
+  window.__mockitPickerActive = ${initialActive};
 
   function clearHighlights() {
     document.querySelectorAll('[data-mk-sel]').forEach(function(n) {
@@ -112,7 +111,9 @@ function buildPickerScript(screenId: string): string {
     }, '*');
   }, true);
 
-  window.addEventListener('message', function(e) {
+  if (!window.__mockitMessageListenerAdded) {
+    window.__mockitMessageListenerAdded = true;
+    window.addEventListener('message', function(e) {
     if (!e.data || e.data.screenId !== '${screenId}') return;
     if (e.data.type === '__mockit_set_picker__') {
       window.__mockitPickerActive = !!e.data.active;
@@ -137,10 +138,10 @@ function buildPickerScript(screenId: string): string {
       }, '*');
     }
   });
+}
 })();
 `.trim();
 }
-
 function buildHeightScript(screenId: string): string {
     return `
 (function() {
@@ -168,6 +169,9 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
     const isSelected = useAppStore(s => s.selectedScreenId === screen.id);
     const isEditing = useAppStore(s => s.sidebarMode === 'editor' && s.selectedScreenId === screen.id);
 
+    const isEditingRef = useRef(isEditing);
+    useEffect(() => { isEditingRef.current = isEditing; }, [isEditing]);
+
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const skipRewriteRef = useRef(false);
 
@@ -181,27 +185,27 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
     const iframeScale = frameWidth / MOBILE_WIDTH;
     const scaledHeight = contentHeight * iframeScale;
 
-    // ── inject scripts reliably via iframe onload, not setTimeout ──
     const injectScripts = useCallback(() => {
         const doc = iframeRef.current?.contentDocument;
         if (!doc?.head) return;
 
-        // picker
+        // Remove stale script tags before re-injecting (deduplication at DOM level)
         doc.querySelectorAll('[data-mk-script]').forEach(n => n.remove());
         const ps = doc.createElement('script');
         ps.setAttribute('data-mk-script', 'true');
-        ps.textContent = buildPickerScript(screen.id);
+        ps.textContent = buildPickerScript(screen.id, isEditingRef.current);
         doc.head.appendChild(ps);
 
-        // height reporter
         doc.querySelectorAll('[data-mk-height]').forEach(n => n.remove());
         const hs = doc.createElement('script');
         hs.setAttribute('data-mk-height', 'true');
         hs.textContent = buildHeightScript(screen.id);
         doc.head.appendChild(hs);
+        iframeRef.current?.contentWindow?.postMessage(
+            { type: '__mockit_set_picker__', screenId: screen.id, active: isEditingRef.current }, '*'
+        );
     }, [screen.id]);
 
-    // ── write HTML to iframe ──
     useEffect(() => {
         if (skipRewriteRef.current) { skipRewriteRef.current = false; return; }
         const iframe = iframeRef.current;
@@ -211,6 +215,10 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
         let body = screen.html;
         const m = screen.html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
         if (m) body = m[1];
+
+        // Attach BEFORE doc.open() — guarantees we catch the load event
+        const onLoad = () => injectScripts();
+        iframe?.addEventListener('load', onLoad, { once: true });
 
         doc.open();
         doc.write(`<!doctype html><html><head>
@@ -226,23 +234,17 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
 </head><body class="bg-white text-gray-900 w-full">${body || ''}</body></html>`);
         doc.close();
 
-        // Use onload for reliable injection — no more flaky setTimeout
-        const onLoad = () => injectScripts();
-        iframe?.addEventListener('load', onLoad, { once: true });
-        // Fallback: also inject immediately in case doc is already loaded
-        if (doc.readyState === 'complete') injectScripts();
-
         return () => iframe?.removeEventListener('load', onLoad);
     }, [screen.html, injectScripts]);
 
-    // ── picker active state ──
-    useEffect(() => {
-        iframeRef.current?.contentWindow?.postMessage(
-            { type: '__mockit_set_picker__', screenId: screen.id, active: isEditing }, '*'
-        );
-    }, [isEditing, screen.id]);
+    // ── sync picker active state whenever isEditing changes ──
+    // useEffect(() => {
+    //     iframeRef.current?.contentWindow?.postMessage(
+    //         { type: '__mockit_set_picker__', screenId: screen.id, active: isEditing }, '*'
+    //     );
+    // }, [isEditing, screen.id]);
 
-    // ── message handler ──
+    // ── parent-side message handler ──
     useEffect(() => {
         const handler = (e: MessageEvent) => {
             if (!e.data || e.data.screenId !== screen.id) return;
@@ -289,7 +291,6 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
 
     return (
         <motion.div
-            // drag-handle class covers the whole card so you can drag from anywhere
             className="drag-handle flex flex-col"
             style={{ width: frameWidth, height: scaledHeight + 40 }}
             initial={{ scale: 0.92, opacity: 0 }}
@@ -332,7 +333,6 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
                     )}
                 </div>
 
-                {/* Action buttons — nodrag so they don't trigger node drag */}
                 <div
                     className={`nodrag nopan flex items-center gap-0.5 transition-opacity duration-150
                         ${isHovered || isSelected ? 'opacity-100' : 'opacity-0'}`}
@@ -386,7 +386,6 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
                         : isSelected ? 'border-violet-500/40' : 'border-white/10'}`}
                 style={{ height: scaledHeight }}
             >
-                {/* Transparent drag overlay — lets React Flow drag work over the iframe */}
                 {!isEditing && (
                     <div className="absolute inset-0 z-10 cursor-grab" />
                 )}
@@ -467,7 +466,6 @@ function CanvasInner() {
     const zoomIndicatorRef = useRef<HTMLSpanElement>(null);
     const flowRef = useRef<HTMLDivElement>(null);
 
-    // ── build a node from a screen ──
     const toNode = useCallback((s: Screen): Node => ({
         id: s.id,
         type: 'screen',
@@ -480,8 +478,6 @@ function CanvasInner() {
 
     const [nodes, setNodes, onNodesChange] = useNodesState(screens.map(toNode));
 
-    // ── sync only what changed — never recreate nodes wholesale ──
-    // This prevents iframes from reloading when unrelated store fields update
     const screenIdsRef = useRef<string[]>([]);
     const screenPosRef = useRef<Record<string, { x: number; y: number }>>({});
 
@@ -495,15 +491,11 @@ function CanvasInner() {
         screenIdsRef.current = currIds;
 
         setNodes(prev => {
-            // Remove deleted
             let next = prev.filter(n => !removed.includes(n.id));
 
-            // Add new
             const newScreens = screens.filter(s => added.includes(s.id));
             next = [...next, ...newScreens.map(toNode)];
 
-            // Update data (html, width, height etc.) without touching position
-            // Position is managed by React Flow drag — only sync if store changed it externally
             next = next.map(n => {
                 const s = screens.find(sc => sc.id === n.id);
                 if (!s) return n;
@@ -518,41 +510,33 @@ function CanvasInner() {
                 };
             });
 
-            // Update pos cache
             screens.forEach(s => { screenPosRef.current[s.id] = { x: s.x, y: s.y }; });
 
             return next;
         });
     }, [screens, toNode]);
 
-    // ── persist drag position to store ──
     const handleNodesChange: OnNodesChange = useCallback(changes => {
         onNodesChange(changes);
         changes.forEach(c => {
             if (c.type === 'position' && !c.dragging && c.position) {
-                // Update our pos cache so next sync doesn't override it
                 screenPosRef.current[c.id] = { x: c.position.x, y: c.position.y };
                 updateScreen(c.id, { x: c.position.x, y: c.position.y });
             }
         });
     }, [onNodesChange, updateScreen]);
 
-    // ── zoom indicator ──
     const handleViewportChange = useCallback(({ zoom }: { x: number; y: number; zoom: number }) => {
         if (zoomIndicatorRef.current)
             zoomIndicatorRef.current.textContent = `${Math.round(zoom * 100)}%`;
         setCanvasZoomStore(zoom);
     }, [setCanvasZoomStore]);
 
-    // ── smooth wheel zoom — custom handler bypassing React Flow's default ──
-    // React Flow's built-in wheel zoom has a conservative sensitivity that feels sluggish.
-    // We override it completely: read cursor position, compute new zoom, setViewport instantly.
     useEffect(() => {
         const el = flowRef.current;
         if (!el) return;
 
         const onWheel = (e: WheelEvent) => {
-            // Only handle zoom (ctrl/meta OR plain scroll — we want scroll = zoom always)
             e.preventDefault();
             e.stopPropagation();
 
@@ -561,17 +545,15 @@ function CanvasInner() {
             const cursorX = e.clientX - rect.left;
             const cursorY = e.clientY - rect.top;
 
-            // Higher multiplier = snappier zoom. 0.0015 feels natural on trackpad & mouse.
             const delta = e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015);
             const newZoom = Math.min(3, Math.max(0.05, zoom * (1 - delta)));
 
-            // Zoom toward cursor position
             const ratio = newZoom / zoom;
             setViewport({
                 x: cursorX - (cursorX - x) * ratio,
                 y: cursorY - (cursorY - y) * ratio,
                 zoom: newZoom,
-            }, { duration: 0 }); // duration: 0 = no easing lag = glass-smooth
+            }, { duration: 0 });
         };
 
         el.addEventListener('wheel', onWheel, { passive: false });
@@ -584,9 +566,9 @@ function CanvasInner() {
 
     useEffect(() => {
         if (screens.length > 0) {
-            fitView({ padding: 0.2, duration: 350 })
+            fitView({ padding: 0.2, duration: 350 });
         }
-    }, [screens.length])
+    }, [screens.length]);
 
     return (
         <div
@@ -602,13 +584,12 @@ function CanvasInner() {
                 minZoom={0.05}
                 maxZoom={3}
                 defaultViewport={{ x: 40, y: 40, zoom: 0.3 }}
-                // Disable built-in scroll zoom — we handle it ourselves above for full control
                 zoomOnScroll={false}
-                zoomOnPinch                 // keep native pinch-zoom on mobile
+                zoomOnPinch
                 zoomOnDoubleClick={false}
                 panOnScroll={false}
-                panOnDrag                   // left-drag on empty canvas = pan
-                preventScrolling            // stop page scroll while cursor is over canvas
+                panOnDrag
+                preventScrolling
                 selectNodesOnDrag={false}
                 proOptions={{ hideAttribution: true }}
                 deleteKeyCode={null}

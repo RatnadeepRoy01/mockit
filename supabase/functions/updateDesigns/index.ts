@@ -44,7 +44,19 @@ serve(async (req) => {
       if (insertError) throw new Error(`Failed to create job: ${insertError.message}`)
       console.log(`[TRIGGER] Job created id=${job.id} — DB trigger firing worker now`)
 
-      await supabase.from('projects').update({ processing: true }).eq('id', projectId)
+      const { data: project } = await supabase
+        .from('projects').select('content').eq('id', projectId).single()
+
+      await supabase.from('projects').update({
+        processing: true,
+        content: {
+          ...(project?.content || {}),
+          prompt: [
+            ...(project?.content?.prompt || []),
+            { role: 'user', text: body.prompt }
+          ]
+        }
+      }).eq('id', projectId)
 
       return new Response(
         JSON.stringify({ queued: true, job_id: job.id }),
@@ -187,7 +199,6 @@ serve(async (req) => {
         html: updatedHtml,
         prompt: [
           ...(content.prompt || []),
-          { role: 'user', text: prompt },
           ...(text ? [{ role: 'ai', text }] : []),
         ],
       },
