@@ -23,10 +23,48 @@ serve(async (req) => {
     const body = await req.json()
     console.log(`[BODY] ${JSON.stringify(body)}`)
     
+    // ── MODE 1: TRIGGER ────────────────────────────────────
     if (body.projectId && body.prompt && body.screenId) {
       projectId = body.projectId
       console.log(`[TRIGGER] Update request projectId=${projectId} screenId=${body.screenId}`)
 
+      const { data: project } = await supabase
+        .from('projects').select('content, user_id').eq('id', projectId).single()
+
+      // ✅ FIX 1: Check credits BEFORE creating the job
+      const { data: profile } = await supabase
+        .from('profiles').select('credits, plan_expires_at').eq('id', project?.user_id).single()
+
+      if (!profile) {
+        return new Response(
+          JSON.stringify({ error: 'Profile not found.' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      if (profile.plan_expires_at < new Date().toISOString()) {
+        return new Response(
+          JSON.stringify({ error: 'Your plan has expired.' }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      if (profile.credits < 2) {
+        return new Response(
+          JSON.stringify({ error: 'Insufficient credits. You need at least 2 credits.' }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // ✅ FIX 2: Deduct credits BEFORE creating the job
+      const { error: creditError } = await supabase
+        .from('profiles')
+        .update({ credits: profile.credits - 2 })
+        .eq('id', project?.user_id)
+
+      if (creditError) throw new Error(`Failed to deduct credits: ${creditError.message}`)
+
+      // ✅ Now safe to create the job
       const { data: job, error: insertError } = await supabase
         .from('generation_jobs')
         .insert({
@@ -41,11 +79,16 @@ serve(async (req) => {
         .select()
         .single()
 
-      if (insertError) throw new Error(`Failed to create job: ${insertError.message}`)
-      console.log(`[TRIGGER] Job created id=${job.id} — DB trigger firing worker now`)
+      if (insertError) {
+        // ✅ FIX 3: Refund credits if job creation fails
+        await supabase
+          .from('profiles')
+          .update({ credits: profile.credits })
+          .eq('id', project?.user_id)
+        throw new Error(`Failed to create job: ${insertError.message}`)
+      }
 
-      const { data: project } = await supabase
-        .from('projects').select('content').eq('id', projectId).single()
+      console.log(`[TRIGGER] Job created id=${job.id} — DB trigger firing worker now`)
 
       await supabase.from('projects').update({
         processing: true,
@@ -64,10 +107,7 @@ serve(async (req) => {
       )
     }
 
-    // ──────────────────────────────────────────────────────
-    // MODE 2: WORKER
-    // Called by DB trigger with { job_id }
-    // ──────────────────────────────────────────────────────
+    // ── MODE 2: WORKER ─────────────────────────────────────
     if (!body.job_id) {
       console.warn(`[WORKER] No job_id in body`)
       return new Response('no job_id', { status: 200 })
@@ -76,7 +116,6 @@ serve(async (req) => {
     jobId = body.job_id
     console.log(`[WORKER] Attempting to claim job_id=${jobId}`)
 
-    // Atomically claim the job — prevents double processing
     const { data: claimedJob, error: claimErr } = await supabase
       .rpc('claim_generation_job', { p_job_id: jobId })
 
@@ -93,7 +132,6 @@ serve(async (req) => {
 
     console.log(`[WORKER] Claimed job_id=${jobId} attempt=${attempts} projectId=${projectId} screenId=${screenId}`)
 
-    // Dead letter after 5 attempts — delete job and stop
     if (attempts > 5) {
       console.error(`[WORKER] Job ${jobId} exceeded max attempts — deleting`)
       await supabase.from('generation_jobs').delete().eq('id', jobId)
@@ -175,8 +213,8 @@ serve(async (req) => {
     try {
       parsed = JSON.parse(
         content_raw
-          .replace(/```json|```/g, '')  // strip markdown code fences
-          .replace(/"""/g, '"')          // fallback: collapse triple quotes
+          .replace(/```json|```/g, '')
+          .replace(/"""/g, '"')
           .trim()
       )
     } catch (e: any) {
@@ -206,7 +244,6 @@ serve(async (req) => {
     }).eq('id', projectId)
     console.log(`[DB] Project updated screen=${screenId}`)
 
-    // ── Delete job ─────────────────────────────────────────
     await supabase.from('generation_jobs').delete().eq('id', jobId)
     console.log(`[WORKER] Job ${jobId} deleted`)
 

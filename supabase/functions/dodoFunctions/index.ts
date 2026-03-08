@@ -51,11 +51,20 @@ serve(async (req) => {
         day: 'numeric',
       })
 
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', userId)
+        .single()
+
+      const currentCredits = profile?.credits || 0
+      const newCredits = currentCredits + 100
+
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
           plan: 'pro',
-          credits: 100,
+          credits: newCredits,
           plan_activated_at: now.toISOString(),
           plan_expires_at: expiresAt.toISOString(),
         })

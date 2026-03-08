@@ -28,12 +28,37 @@ serve(async (req) => {
       projectId = body.projectId
 
       const { data: project } = await supabase
-        .from('projects').select('content, processing').eq('id', projectId).single()
+        .from('projects').select('content, processing, user_id').eq('id', projectId).single()
 
       if (project?.processing) {
         return new Response(
           JSON.stringify({ error: 'Project is already processing' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // ✅ FIX 1: Select both 'credits' AND 'plan_expires_at'
+      const { data: profile } = await supabase
+        .from('profiles').select('credits, plan_expires_at').eq('id', project?.user_id).single()
+
+      if (!profile) {
+        return new Response(
+          JSON.stringify({ error: 'Profile not found.' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      if (profile.plan_expires_at < new Date().toISOString()) {
+        return new Response(
+          JSON.stringify({ error: 'Your plan has expired.' }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      if (profile.credits < 2) {
+        return new Response(
+          JSON.stringify({ error: 'Insufficient credits. You need at least 2 credits.' }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
 
@@ -166,11 +191,25 @@ serve(async (req) => {
     let updatedHtml = content.html || []
 
     if (structure) {
-      updatedHtml = [...updatedHtml, ...structure.screens.map((s: any) => ({ name: s.id, code: '' }))]
+      updatedHtml = [...updatedHtml, ...structure.screens.map((s: any) => ({ name: s.id, code: '' })) ]
     } else if (html && currentScreen) {
+
+      const { data: Profile } = await supabase
+        .from('profiles').select('credits').eq('id', project.user_id).single()
+
+      if (!Profile) throw new Error('Profile not found during credit deduction')
+
+      if (Profile.credits < 2) {
+        throw new Error(`Insufficient credits. Need 2 but only have ${Profile.credits}.`)
+      }
       updatedHtml = updatedHtml.map((item: any) =>
         item.name === currentScreen.id ? { ...item, code: html } : item
       )
+
+      await supabase
+        .from('profiles')
+        .update({ credits: Profile.credits - 2 })
+        .eq('id', project.user_id)
     }
 
     // ── Queue next iteration or finish ─────────────────────
