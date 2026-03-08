@@ -189,10 +189,16 @@ function buildPickerScript(screenId: string): string {
         color: s('color'), backgroundColor: s('backgroundColor'),
         fontSize: s('fontSize'), fontWeight: s('fontWeight'),
         fontFamily: s('fontFamily'), textAlign: s('textAlign'),
-        borderRadius: s('borderRadius'), padding: s('padding'),
-        border: s('border'), letterSpacing: s('letterSpacing'),
+        borderRadius: s('borderRadius'), letterSpacing: s('letterSpacing'),
         lineHeight: s('lineHeight'), textDecoration: s('textDecoration'),
         fontStyle: s('fontStyle'), opacity: s('opacity'),
+        textTransform: s('textTransform'),
+        paddingTop: s('paddingTop'), paddingRight: s('paddingRight'),
+        paddingBottom: s('paddingBottom'), paddingLeft: s('paddingLeft'),
+        width: s('width'), height: s('height'),
+        borderWidth: s('borderWidth'), borderColor: s('borderColor'),
+        borderStyle: s('borderStyle'), boxShadow: s('boxShadow'),
+        display: s('display'), visibility: s('visibility'),
       }
     }, '*');
   }, true);

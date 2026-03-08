@@ -54,6 +54,19 @@ export interface ElementStyle {
   lineHeight?: string;
   textDecoration?: string;
   fontStyle?: string;
+  textTransform?: string;
+  paddingTop?: string;
+  paddingRight?: string;
+  paddingBottom?: string;
+  paddingLeft?: string;
+  width?: string;
+  height?: string;
+  borderWidth?: string;
+  borderColor?: string;
+  borderStyle?: string;
+  boxShadow?: string;
+  display?: string;
+  visibility?: string;
 }
 
 export interface SelectedElement {
