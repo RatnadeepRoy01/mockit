@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { useAppStore, type ElementStyle } from '@/store/useAppStore';
 import { supabase } from '@/lib/supabaseClient';
+import { FieldGroup, FieldLegend, Field, FieldContent, FieldLabel } from '@/components/ui/field';
 
 async function callAI(projectId: string, prompt: string, screenId?: string) {
     try {
@@ -201,6 +202,85 @@ function PromptPanel({ projectId }: { projectId: string }) {
     );
 }
 
+
+const field = `h-7 rounded text-[12px] font-mono outline-none px-2 transition-colors
+        bg-black/[0.06] dark:bg-white/[0.06]
+        border border-black/[0.1] dark:border-white/[0.09]
+        text-zinc-800 dark:text-zinc-200
+        focus:border-black/[0.24] dark:focus:border-white/[0.24]`;
+
+const iconBtn = (active: boolean) =>
+    `w-7 h-7 flex items-center justify-center rounded border transition-all ${active
+        ? 'bg-violet-500/15 dark:bg-violet-500/20 border-violet-400/50 dark:border-violet-500/50 text-violet-600 dark:text-violet-300'
+        : 'border-black/[0.1] dark:border-white/[0.09] text-zinc-400 dark:text-zinc-500 hover:border-black/[0.22] dark:hover:border-white/[0.22] hover:text-zinc-700 dark:hover:text-zinc-200'}`;
+
+const PxInput = ({ value, onChange }: { value: string | undefined; onChange: (v: string) => void }) => {
+    const [local, setLocal] = useState(() => (value ?? '0').replace('px', ''));
+    return (
+        <input
+            value={local}
+            onChange={e => {
+                setLocal(e.target.value);
+                onChange(`${e.target.value}px`);
+            }}
+            className="h-7 rounded text-[12px] font-mono outline-none px-2 text-center transition-colors
+                bg-black/[0.06] dark:bg-white/[0.06]
+                border border-black/[0.1] dark:border-white/[0.09]
+                text-zinc-800 dark:text-zinc-200
+                focus:border-black/[0.24] dark:focus:border-white/[0.24] w-full"
+        />
+    );
+};
+
+const ColorSwatch = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => {
+    const safe = value.startsWith('#') ? value : '#7c3aed';
+    return (
+        <div className="flex items-center gap-2 flex-1">
+            <div className="relative w-[18px] h-[18px] flex-shrink-0">
+                <div className="w-full h-full rounded-sm border border-black/[0.12] dark:border-white/[0.12]"
+                    style={{ backgroundColor: value }} />
+                <input
+                    type="color"
+                    value={safe}
+                    onChange={e => onChange(e.target.value)}
+                    className="absolute h-full opacity-0 cursor-pointer"
+                    style={{ width: '18px', height: '18px', bottom: 0, left: 0 }}
+                />
+            </div>
+            <span className="text-[11px] text-zinc-500 dark:text-zinc-500 transition-colors font-mono">
+                {value}
+            </span>
+        </div>
+    );
+};
+
+const px = (v: string | undefined, fallback = '0') => (v ?? fallback).replace('px', '');
+
+const getTransformValue = (transform: string | undefined, fn: string, fallback: string) => {
+    if (!transform || transform === 'none') return fallback;
+
+    if (fn === 'scale') {
+        // handle matrix format
+        const matrix = transform.match(/matrix\(([^)]+)\)/);
+        if (matrix) {
+            const values = matrix[1].split(',');
+            return String(parseFloat(values[0]).toFixed(2));
+        }
+    }
+
+    const match = transform.match(new RegExp(`${fn}\\(([^)]+)\\)`));
+    return match ? match[1].replace('px', '').replace('deg', '') : fallback;
+};
+
+const setTransformValue = (current: string | undefined, fn: string, value: string, unit = '') => {
+    const newFn = `${fn}(${value}${unit})`;
+    if (!current || current === 'none') return newFn;
+    if (current.includes(`${fn}(`)) {
+        return current.replace(new RegExp(`${fn}\\([^)]+\\)`), newFn);
+    }
+    return `${current} ${newFn}`;
+};
+
 function EditorPanel() {
     const selectedElement = useAppStore(s => s.selectedElement);
     const setSelectedElement = useAppStore(s => s.setSelectedElement);
@@ -226,7 +306,9 @@ function EditorPanel() {
     }, [selectedElement]);
 
     useEffect(() => {
-        if (selectedElement) applyChanges(localStyle, localText);
+        if (!selectedElement) return;
+        const timer = setTimeout(() => applyChanges(localStyle, localText), 100);
+        return () => clearTimeout(timer);
     }, [localStyle, applyChanges, selectedElement]);
 
     useEffect(() => {
@@ -253,25 +335,6 @@ function EditorPanel() {
         );
     }
 
-    const field = `h-7 rounded text-[12px] font-mono outline-none px-2 transition-colors
-        bg-black/[0.06] dark:bg-white/[0.06]
-        border border-black/[0.1] dark:border-white/[0.09]
-        text-zinc-800 dark:text-zinc-200
-        focus:border-black/[0.24] dark:focus:border-white/[0.24]`;
-
-    const iconBtn = (active: boolean) =>
-        `w-7 h-7 flex items-center justify-center rounded border transition-all ${active
-            ? 'bg-violet-500/15 dark:bg-violet-500/20 border-violet-400/50 dark:border-violet-500/50 text-violet-600 dark:text-violet-300'
-            : 'border-black/[0.1] dark:border-white/[0.09] text-zinc-400 dark:text-zinc-500 hover:border-black/[0.22] dark:hover:border-white/[0.22] hover:text-zinc-700 dark:hover:text-zinc-200'}`;
-
-    const px = (v: string | undefined, fallback = '0') => (v ?? fallback).replace('px', '');
-
-    const PxInput = ({ value, onChange, className }: { value: string | undefined; onChange: (v: string) => void; className?: string | undefined }) => (
-        <div className="flex items-center gap-1">
-            <input value={px(value)} onChange={e => onChange(`${e.target.value}px`)} className={`${field} w-12 text-center`} />
-        </div>
-    );
-
     return (
         <div className="flex-1 overflow-y-auto min-h-0 font-mono"
             style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(120,120,120,0.2) transparent', overscrollBehavior: 'contain' }}>
@@ -287,11 +350,12 @@ function EditorPanel() {
                 </button>
             </div>
 
-            <div className="divide-y divide-black/[0.05] dark:divide-white/[0.04]">
+            <div key={selectedElement?.mkId} className="divide-y divide-black/[0.05] dark:divide-white/[0.04]">
 
                 {/* Content */}
                 {selectedElement.textContent !== '' && (
-                    <ESection label="content">
+                    <FieldGroup className="px-4 py-2 gap-2">
+                        <FieldLegend variant="label" className="text-[10px] text-zinc-600 dark:text-zinc-400">content</FieldLegend>
                         <textarea
                             value={localText}
                             onChange={e => setLocalText(e.target.value)}
@@ -305,37 +369,47 @@ function EditorPanel() {
                                 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
                                 focus:border-black/[0.24] dark:focus:border-white/[0.24]"
                         />
-                    </ESection>
+                    </FieldGroup>
                 )}
 
                 {/* Typography */}
-                <ESection label="typography">
-                    <ERow prop="size">
-                        <div className="flex items-center gap-1">
-                            <button onClick={() => setStyle('fontSize', `${Math.max(8, parseInt(localStyle.fontSize ?? '16') - 1)}px`)} className={iconBtn(false)}><Minus className="w-2.5 h-2.5" /></button>
-                            <input value={px(localStyle.fontSize, '16')} onChange={e => setStyle('fontSize', `${e.target.value}px`)} className={`${field} w-12 text-center`} />
-                            <span className="text-[10px] text-zinc-400 dark:text-zinc-600">px</span>
-                            <button onClick={() => setStyle('fontSize', `${parseInt(localStyle.fontSize ?? '16') + 1}px`)} className={iconBtn(false)}><Plus className="w-2.5 h-2.5" /></button>
-                        </div>
-                    </ERow>
-                    <ERow prop="family">
-                        <select value={localStyle.fontFamily ?? ''} onChange={e => setStyle('fontFamily', e.target.value)}
-                            className={`${field} w-full appearance-none cursor-pointer`}>
-                            {['', 'system-ui', 'Inter', 'Georgia', 'Times New Roman', 'monospace', 'Arial', 'Helvetica', 'Courier New'].map(f => (
-                                <option key={f} value={f} className="bg-zinc-100 dark:bg-zinc-900">{f || '— default —'}</option>
-                            ))}
-                        </select>
-                    </ERow>
-                    <ERow prop="weight">
-                        <select value={localStyle.fontWeight ?? '400'} onChange={e => setStyle('fontWeight', e.target.value)}
-                            className={`${field} w-16 appearance-none cursor-pointer`}>
-                            {['300', '400', '500', '600', '700', '800', '900'].map(w => (
-                                <option key={w} value={w} className="bg-zinc-100 dark:bg-zinc-900">{w}</option>
-                            ))}
-                        </select>
-                    </ERow>
-                    <ERow prop="style">
-                        <div className="flex items-center gap-1.5">
+                <FieldGroup className="px-4 py-2 gap-2">
+                    <FieldLegend variant="label" className="text-[10px] text-zinc-600 dark:text-zinc-400">typography</FieldLegend>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">size</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <input value={px(localStyle.fontSize, '16')} onChange={e => setStyle('fontSize', `${e.target.value}px`)} className={`${field} w-full text-center`} />
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">family</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <select value={localStyle.fontFamily ?? ''} onChange={e => setStyle('fontFamily', e.target.value)}
+                                className={`${field} w-full appearance-none cursor-pointer`}>
+                                {['', 'system-ui', 'Inter', 'Georgia', 'Times New Roman', 'monospace', 'Arial', 'Helvetica', 'Courier New'].map(f => (
+                                    <option key={f} value={f} className="bg-zinc-100 dark:bg-zinc-900">{f || '— default —'}</option>
+                                ))}
+                            </select>
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">weight</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <select value={localStyle.fontWeight ?? '400'} onChange={e => setStyle('fontWeight', e.target.value)}
+                                className={`${field} w-full appearance-none cursor-pointer`}>
+                                {['300', '400', '500', '600', '700', '800', '900'].map(w => (
+                                    <option key={w} value={w} className="bg-zinc-100 dark:bg-zinc-900">{w}</option>
+                                ))}
+                            </select>
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">style</FieldLabel>
+                        <FieldContent className="flex-row gap-1.5">
                             {[
                                 { icon: <Bold className="w-3 h-3" />, sk: 'fontWeight', on: '700', off: '400' },
                                 { icon: <Italic className="w-3 h-3" />, sk: 'fontStyle', on: 'italic', off: 'normal' },
@@ -344,17 +418,21 @@ function EditorPanel() {
                                 const active = (localStyle as Record<string, string>)[sk] === on;
                                 return <button key={sk} className={iconBtn(active)} onClick={() => setStyle(sk as keyof ElementStyle, active ? off : on)}>{icon}</button>;
                             })}
-                        </div>
-                    </ERow>
-                    <ERow prop="align">
-                        <div className="flex items-center gap-1.5">
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">align</FieldLabel>
+                        <FieldContent className="flex-row gap-1.5">
                             {[{ icon: <AlignLeft className="w-3 h-3" />, val: 'left' }, { icon: <AlignCenter className="w-3 h-3" />, val: 'center' }, { icon: <AlignRight className="w-3 h-3" />, val: 'right' }].map(({ icon, val }) => (
                                 <button key={val} className={iconBtn(localStyle.textAlign === val)} onClick={() => setStyle('textAlign', val)}>{icon}</button>
                             ))}
-                        </div>
-                    </ERow>
-                    <ERow prop="case">
-                        <div className="flex items-center gap-1.5">
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">case</FieldLabel>
+                        <FieldContent className="flex-row gap-1.5">
                             {[['AA', 'uppercase'], ['aa', 'lowercase'], ['Aa', 'capitalize']].map(([label, val]) => (
                                 <button key={val} onClick={() => setStyle('textTransform', localStyle.textTransform === val ? 'none' : val)}
                                     className={`px-2 h-7 rounded border text-[10px] transition-all ${localStyle.textTransform === val
@@ -363,109 +441,290 @@ function EditorPanel() {
                                     {label}
                                 </button>
                             ))}
-                        </div>
-                    </ERow>
-                    <ERow prop="line-h">
-                        <input value={localStyle.lineHeight ?? ''} onChange={e => setStyle('lineHeight', e.target.value)}
-                            placeholder="1.5" className={`${field} w-20`} />
-                    </ERow>
-                    <ERow prop="spacing">
-                        <PxInput value={localStyle.letterSpacing} onChange={v => setStyle('letterSpacing', v)} className={`${field} w-20`} />
-                    </ERow>
-                </ESection>
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">line-h</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <PxInput value={localStyle.lineHeight ?? ''} onChange={v => setStyle('lineHeight', v)} />
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">spacing</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <PxInput value={localStyle.letterSpacing} onChange={v => setStyle('letterSpacing', v)} />
+                        </FieldContent>
+                    </Field>
+                </FieldGroup>
 
                 {/* Colors */}
-                <ESection label="colors">
-                    <ERow prop="text"><Swatch value={localStyle.color ?? '#000000'} onChange={v => setStyle('color', v)} /></ERow>
-                    <ERow prop="fill"><Swatch value={localStyle.backgroundColor ?? '#ffffff'} onChange={v => setStyle('backgroundColor', v)} /></ERow>
-                    <ERow prop="border"><Swatch value={localStyle.borderColor ?? '#000000'} onChange={v => setStyle('borderColor', v)} /></ERow>
-                </ESection>
+                <FieldGroup className="px-4 py-2 gap-2">
+                    <FieldLegend variant="label" className="text-[10px] text-zinc-600 dark:text-zinc-400">colors</FieldLegend>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">text</FieldLabel>
+                        <FieldContent className="flex-1"><ColorSwatch value={localStyle.color ?? '#000000'} onChange={v => setStyle('color', v)} /></FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">fill</FieldLabel>
+                        <FieldContent className="flex-1"><ColorSwatch value={localStyle.backgroundColor ?? '#ffffff'} onChange={v => setStyle('backgroundColor', v)} /></FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">border</FieldLabel>
+                        <FieldContent className="flex-1"><ColorSwatch value={localStyle.borderColor ?? '#000000'} onChange={v => setStyle('borderColor', v)} /></FieldContent>
+                    </Field>
+                </FieldGroup>
 
                 {/* Spacing */}
-                <ESection label="padding">
-                    <ERow prop="top"><PxInput value={localStyle.paddingTop} onChange={v => setStyle('paddingTop', v)} /></ERow>
-                    <ERow prop="right"><PxInput value={localStyle.paddingRight} onChange={v => setStyle('paddingRight', v)} /></ERow>
-                    <ERow prop="bottom"><PxInput value={localStyle.paddingBottom} onChange={v => setStyle('paddingBottom', v)} /></ERow>
-                    <ERow prop="left"><PxInput value={localStyle.paddingLeft} onChange={v => setStyle('paddingLeft', v)} /></ERow>
-                </ESection>
+                <FieldGroup className="px-4 py-2 gap-2">
+                    <FieldLegend variant="label" className="text-[10px] text-zinc-600 dark:text-zinc-400">padding</FieldLegend>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">top</FieldLabel>
+                        <FieldContent className="flex-1"><PxInput value={localStyle.paddingTop} onChange={v => setStyle('paddingTop', v)} /></FieldContent>
+                    </Field>
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">right</FieldLabel>
+                        <FieldContent className="flex-1"><PxInput value={localStyle.paddingRight} onChange={v => setStyle('paddingRight', v)} /></FieldContent>
+                    </Field>
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">bottom</FieldLabel>
+                        <FieldContent className="flex-1"><PxInput value={localStyle.paddingBottom} onChange={v => setStyle('paddingBottom', v)} /></FieldContent>
+                    </Field>
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">left</FieldLabel>
+                        <FieldContent className="flex-1"><PxInput value={localStyle.paddingLeft} onChange={v => setStyle('paddingLeft', v)} /></FieldContent>
+                    </Field>
+                </FieldGroup>
 
                 {/* Size */}
-                <ESection label="size">
-                    <ERow prop="width">
-                        <input value={localStyle.width ?? ''} onChange={e => setStyle('width', e.target.value)} placeholder="auto" className={`${field} w-24`} />
-                    </ERow>
-                    <ERow prop="height">
-                        <input value={localStyle.height ?? ''} onChange={e => setStyle('height', e.target.value)} placeholder="auto" className={`${field} w-24`} />
-                    </ERow>
-                </ESection>
+                <FieldGroup className="px-4 py-2 gap-2">
+                    <FieldLegend variant="label" className="text-[10px] text-zinc-600 dark:text-zinc-400">size</FieldLegend>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">width</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <input value={localStyle.width ?? ''} onChange={e => setStyle('width', e.target.value)} placeholder="auto" className={`${field} w-full`} />
+                        </FieldContent>
+                    </Field>
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">height</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <input value={localStyle.height ?? ''} onChange={e => setStyle('height', e.target.value)} placeholder="auto" className={`${field} w-full`} />
+                        </FieldContent>
+                    </Field>
+                </FieldGroup>
 
                 {/* Border */}
-                <ESection label="border">
-                    <ERow prop="width"><PxInput value={localStyle.borderWidth} onChange={v => setStyle('borderWidth', v)} /></ERow>
-                    <ERow prop="style">
-                        <select value={localStyle.borderStyle ?? 'solid'} onChange={e => setStyle('borderStyle', e.target.value)}
-                            className={`${field} w-28 appearance-none cursor-pointer`}>
-                            {['solid', 'dashed', 'dotted', 'none'].map(s => (
-                                <option key={s} value={s} className="bg-zinc-100 dark:bg-zinc-900">{s}</option>
-                            ))}
-                        </select>
-                    </ERow>
-                </ESection>
+                <FieldGroup className="px-4 py-2 gap-2">
+                    <FieldLegend variant="label" className="text-[10px] text-zinc-600 dark:text-zinc-400">border</FieldLegend>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">width</FieldLabel>
+                        <FieldContent className="flex-1"><PxInput value={localStyle.borderWidth} onChange={v => setStyle('borderWidth', v)} /></FieldContent>
+                    </Field>
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">style</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <select value={localStyle.borderStyle ?? 'solid'} onChange={e => setStyle('borderStyle', e.target.value)}
+                                className={`${field} w-full appearance-none cursor-pointer`}>
+                                {['solid', 'dashed', 'dotted', 'none'].map(s => (
+                                    <option key={s} value={s} className="bg-zinc-100 dark:bg-zinc-900">{s}</option>
+                                ))}
+                            </select>
+                        </FieldContent>
+                    </Field>
+                </FieldGroup>
 
                 {/* Shape */}
-                <ESection label="shape">
-                    <ERow prop="radius">
-                        <div className="flex items-center gap-2.5 flex-1">
+                <FieldGroup className="px-4 py-2 gap-2">
+                    <FieldLegend variant="label" className="text-[10px] text-zinc-600 dark:text-zinc-400">shape</FieldLegend>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">radius</FieldLabel>
+                        <FieldContent className="flex-1 flex-row gap-2">
                             <Slider min={0} max={48} step={1}
                                 value={[parseInt(localStyle.borderRadius ?? '0')]}
                                 onValueChange={([v]) => setStyle('borderRadius', `${v}px`)}
                                 className="flex-1 [&_[data-slot=range]]:bg-violet-500 [&_[data-slot=thumb]]:border-violet-500 [&_[data-slot=thumb]]:w-3 [&_[data-slot=thumb]]:h-3" />
-                            <span className="text-[11px] text-zinc-400 dark:text-zinc-600 w-8 text-right tabular-nums">{localStyle.borderRadius ?? '0px'}</span>
-                        </div>
-                    </ERow>
-                    <ERow prop="opacity">
-                        <div className="flex items-center gap-2.5 flex-1">
+                            <span className="text-[11px] text-zinc-400 dark:text-zinc-600 w-12 text-right tabular-nums">{localStyle.borderRadius ?? '0px'}</span>
+                        </FieldContent>
+                    </Field>
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">opacity</FieldLabel>
+                        <FieldContent className="flex-1 flex-row gap-2">
                             <Slider min={0} max={100} step={1}
                                 value={[Math.round(parseFloat(localStyle.opacity ?? '1') * 100)]}
                                 onValueChange={([v]) => setStyle('opacity', String(v / 100))}
                                 className="flex-1 [&_[data-slot=range]]:bg-violet-500 [&_[data-slot=thumb]]:border-violet-500 [&_[data-slot=thumb]]:w-3 [&_[data-slot=thumb]]:h-3" />
-                            <span className="text-[11px] text-zinc-400 dark:text-zinc-600 w-8 text-right tabular-nums">{Math.round(parseFloat(localStyle.opacity ?? '1') * 100)}%</span>
-                        </div>
-                    </ERow>
-                </ESection>
+                            <span className="text-[11px] text-zinc-400 dark:text-zinc-600 w-12 text-right tabular-nums">{Math.round(parseFloat(localStyle.opacity ?? '1') * 100)}%</span>
+                        </FieldContent>
+                    </Field>
+                </FieldGroup>
 
                 {/* Effects */}
-                <ESection label="effects">
-                    <ERow prop="shadow">
-                        <select value={localStyle.boxShadow ?? 'none'} onChange={e => setStyle('boxShadow', e.target.value)}
-                            className={`${field} w-full appearance-none cursor-pointer`}>
-                            {[
-                                { label: 'none', value: 'none' },
-                                { label: 'sm', value: '0 1px 2px rgba(0,0,0,0.05)' },
-                                { label: 'md', value: '0 4px 6px rgba(0,0,0,0.1)' },
-                                { label: 'lg', value: '0 10px 15px rgba(0,0,0,0.15)' },
-                                { label: 'xl', value: '0 20px 25px rgba(0,0,0,0.2)' },
-                                { label: 'inner', value: 'inset 0 2px 4px rgba(0,0,0,0.1)' },
-                            ].map(o => <option key={o.label} value={o.value} className="bg-zinc-100 dark:bg-zinc-900">{o.label}</option>)}
-                        </select>
-                    </ERow>
-                    <ERow prop="display">
-                        <select value={localStyle.display ?? ''} onChange={e => setStyle('display', e.target.value)}
-                            className={`${field} w-full appearance-none cursor-pointer`}>
-                            {['', 'block', 'flex', 'inline', 'inline-block', 'grid', 'none'].map(d => (
-                                <option key={d} value={d} className="bg-zinc-100 dark:bg-zinc-900">{d || '— default —'}</option>
-                            ))}
-                        </select>
-                    </ERow>
-                    <ERow prop="visibility">
-                        <select value={localStyle.visibility ?? 'visible'} onChange={e => setStyle('visibility', e.target.value)}
-                            className={`${field} w-full appearance-none cursor-pointer`}>
-                            {['visible', 'hidden'].map(v => (
-                                <option key={v} value={v} className="bg-zinc-100 dark:bg-zinc-900">{v}</option>
-                            ))}
-                        </select>
-                    </ERow>
-                </ESection>
+                <FieldGroup className="px-4 py-2 gap-2">
+                    <FieldLegend variant="label" className="text-[10px] text-zinc-600 dark:text-zinc-400">effects</FieldLegend>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">shadow</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <select value={localStyle.boxShadow ?? 'none'} onChange={e => setStyle('boxShadow', e.target.value)}
+                                className={`${field} w-full appearance-none cursor-pointer`}>
+                                {[
+                                    { label: 'none', value: 'none' },
+                                    { label: 'sm', value: '0 1px 2px rgba(0,0,0,0.05)' },
+                                    { label: 'md', value: '0 4px 6px rgba(0,0,0,0.1)' },
+                                    { label: 'lg', value: '0 10px 15px rgba(0,0,0,0.15)' },
+                                    { label: 'xl', value: '0 20px 25px rgba(0,0,0,0.2)' },
+                                    { label: 'inner', value: 'inset 0 2px 4px rgba(0,0,0,0.1)' },
+                                ].map(o => <option key={o.label} value={o.value} className="bg-zinc-100 dark:bg-zinc-900">{o.label}</option>)}
+                            </select>
+                        </FieldContent>
+                    </Field>
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">display</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <select value={localStyle.display ?? ''} onChange={e => setStyle('display', e.target.value)}
+                                className={`${field} w-full appearance-none cursor-pointer`}>
+                                {['', 'block', 'flex', 'inline', 'inline-block', 'grid', 'none'].map(d => (
+                                    <option key={d} value={d} className="bg-zinc-100 dark:bg-zinc-900">{d || '— default —'}</option>
+                                ))}
+                            </select>
+                        </FieldContent>
+                    </Field>
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">visibility</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <select value={localStyle.visibility ?? 'visible'} onChange={e => setStyle('visibility', e.target.value)}
+                                className={`${field} w-full appearance-none cursor-pointer`}>
+                                {['visible', 'hidden'].map(v => (
+                                    <option key={v} value={v} className="bg-zinc-100 dark:bg-zinc-900">{v}</option>
+                                ))}
+                            </select>
+                        </FieldContent>
+                    </Field>
+                </FieldGroup>
+                {/* Transform */}
+                <FieldGroup className="px-4 py-2 gap-2">
+                    <FieldLegend variant="label" className="text-[10px] text-zinc-600 dark:text-zinc-400">transform</FieldLegend>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">scale</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <div className="flex items-center gap-1">
+                                <input
+                                    value={getTransformValue(localStyle.transform, 'scale', '1')}
+                                    onChange={e => setStyle('transform', setTransformValue(localStyle.transform, 'scale', e.target.value))}
+                                    className={`${field} w-full text-center`}
+                                />
+                                <span className="text-[10px] text-zinc-400 dark:text-zinc-600">sc</span>
+                            </div>
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">rotate</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <div className="flex items-center gap-1">
+                                <input
+                                    value={getTransformValue(localStyle.transform, 'rotate', '0')}
+                                    onChange={e => setStyle('transform', setTransformValue(localStyle.transform, 'rotate', e.target.value, 'deg'))}
+                                    className={`${field} w-full text-center`}
+                                />
+                                <span className="text-[10px] text-zinc-400 dark:text-zinc-600">dg</span>
+                            </div>
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">translate x</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <div className="flex items-center gap-1">
+                                <input
+                                    value={getTransformValue(localStyle.transform, 'translateX', '0')}
+                                    onChange={e => setStyle('transform', setTransformValue(localStyle.transform, 'translateX', e.target.value, 'px'))}
+                                    className={`${field} w-full text-center`}
+                                />
+                                <span className="text-[10px] text-zinc-400 dark:text-zinc-600">px</span>
+                            </div>
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">translate y</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <div className="flex items-center gap-1">
+                                <input
+                                    value={getTransformValue(localStyle.transform, 'translateY', '0')}
+                                    onChange={e => setStyle('transform', setTransformValue(localStyle.transform, 'translateY', e.target.value, 'px'))}
+                                    className={`${field} w-full text-center`}
+                                />
+                                <span className="text-[10px] text-zinc-400 dark:text-zinc-600">px</span>
+                            </div>
+                        </FieldContent>
+                    </Field>
+                </FieldGroup>
+
+                <FieldGroup className="px-4 py-2 gap-2">
+                    <FieldLegend variant="label" className="text-[10px] text-zinc-600 dark:text-zinc-400">position</FieldLegend>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">type</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <select value={localStyle.position ?? ''} onChange={e => setStyle('position', e.target.value)}
+                                className={`${field} w-full appearance-none cursor-pointer`}>
+                                {['', 'static', 'relative', 'absolute', 'fixed', 'sticky'].map(p => (
+                                    <option key={p} value={p} className="bg-zinc-100 dark:bg-zinc-900">{p || '— default —'}</option>
+                                ))}
+                            </select>
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">top</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <PxInput value={localStyle.top} onChange={v => setStyle('top', v)} />
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">right</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <PxInput value={localStyle.right} onChange={v => setStyle('right', v)} />
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">bottom</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <PxInput value={localStyle.bottom} onChange={v => setStyle('bottom', v)} />
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">left</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <PxInput value={localStyle.left} onChange={v => setStyle('left', v)} />
+                        </FieldContent>
+                    </Field>
+
+                    <Field orientation="horizontal" className="gap-2 items-center" style={{ gap: '6px' }}>
+                        <FieldLabel className="w-16 text-[11px]">z-index</FieldLabel>
+                        <FieldContent className="flex-1">
+                            <input
+                                value={localStyle.zIndex ?? ''}
+                                onChange={e => setStyle('zIndex', e.target.value)}
+                                placeholder="auto"
+                                className={`${field} w-full text-center`}
+                            />
+                        </FieldContent>
+                    </Field>
+                </FieldGroup>
             </div>
 
             {/* Reset */}
@@ -480,48 +739,6 @@ function EditorPanel() {
                     <RotateCcw className="w-3 h-3" /> reset to original
                 </button>
             </div>
-        </div>
-    );
-}
-
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-function ESection({ label, children }: { label: string; children: React.ReactNode }) {
-    return (
-        <div className="px-4 pt-4 pb-3 space-y-3">
-            <p className="text-[10px] uppercase tracking-widest dark:text-zinc-200 text-zinc-850">{label}</p>
-            <div className="space-y-2.5">{children}</div>
-        </div>
-    );
-}
-
-function ERow({ prop, children }: { prop: string; children: React.ReactNode }) {
-    return (
-        <div className="flex items-center gap-3 min-h-[28px]">
-            <span className="text-[11px] dark:text-zinc-400  text-zinc-600 w-[88px] flex-shrink-0">{prop}</span>
-            <div className="flex items-center gap-1.5 flex-1 min-w-0">{children}</div>
-        </div>
-    );
-}
-
-function Swatch({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-    const safe = value.startsWith('#') ? value : '#7c3aed';
-    return (
-        <div className="flex items-center gap-2.5 group">
-            <div className="relative w-[18px] h-[18px] flex-shrink-0">
-                <div className="w-full h-full rounded-sm border border-black/[0.12] dark:border-white/[0.12]"
-                    style={{ backgroundColor: value }} />
-                <input
-                    type="color"
-                    value={safe}
-                    onChange={e => onChange(e.target.value)}
-                    className="absolute h-full opacity-0 cursor-pointer"
-                    style={{ width: '18px', height: '18px', bottom: 0, left: 0 }}
-                />
-            </div>
-            <span className="text-[11px] text-zinc-500 group-hover:text-zinc-800 dark:text-zinc-500 dark:group-hover:text-zinc-200 transition-colors">
-                {value}
-            </span>
         </div>
     );
 }

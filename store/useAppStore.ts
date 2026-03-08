@@ -67,6 +67,13 @@ export interface ElementStyle {
   boxShadow?: string;
   display?: string;
   visibility?: string;
+  transform?: string;
+  position?: string;
+  top?: string;
+  right?: string;
+  bottom?: string;
+  left?: string;
+  zIndex?: string;
 }
 
 export interface SelectedElement {

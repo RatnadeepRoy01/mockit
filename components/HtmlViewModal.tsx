@@ -49,7 +49,6 @@ export default function HtmlViewModal() {
 </html>
     `.trim();
 
-    // Pretty-format the HTML for display only
     const formatHtml = (html: string): string => {
         let formatted = '';
         let indent = 0;
@@ -90,7 +89,12 @@ export default function HtmlViewModal() {
 
     return (
         <Dialog open={open} onOpenChange={(v) => { if (!v) setHtmlViewModalScreenId(null); }}>
-            <DialogContent className="max-w-3xl w-full bg-background border-border text-foreground p-0 gap-0 overflow-hidden">
+            <DialogContent className="
+                w-full bg-background border-border text-foreground p-0 gap-0 overflow-hidden rounded-2xl
+                mx-4 sm:mx-auto
+                max-w-[calc(100vw-32px)] sm:max-w-3xl
+                max-h-[calc(100dvh-32px)] sm:max-h-[90vh]
+            ">
                 <DialogHeader className="px-6 py-4 border-b border-border flex-row items-center justify-between space-y-0">
                     <div className="flex items-center gap-3">
                         <DialogTitle className="text-base font-bold">{screen?.id}</DialogTitle>
@@ -109,7 +113,11 @@ export default function HtmlViewModal() {
                     </Button>
                 </DialogHeader>
 
-                <div className="h-[520px] overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                <div className="
+                    overflow-y-auto overflow-x-hidden
+                    h-[calc(100dvh-200px)] sm:h-[520px]
+                    [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]
+                ">
                     <pre className="p-6 text-[11px] text-muted-foreground font-mono leading-5 tracking-wide whitespace-pre-wrap break-all w-full">
                         {displayHtml}
                     </pre>

@@ -20,9 +20,11 @@ import '@xyflow/react/dist/style.css';
 import {
     Code2, Trash2, Camera, Maximize2, MousePointer2,
     ZoomIn, ZoomOut, Maximize, AlertTriangle, RefreshCw,
+    Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import html2canvas from 'html2canvas';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAppStore, type Screen, type SelectedElement, type ElementStyle } from '@/store/useAppStore';
 import { supabase } from '@/lib/supabaseClient';
@@ -199,6 +201,10 @@ function buildPickerScript(screenId: string): string {
         borderWidth: s('borderWidth'), borderColor: s('borderColor'),
         borderStyle: s('borderStyle'), boxShadow: s('boxShadow'),
         display: s('display'), visibility: s('visibility'),
+        transform: s('transform'), position: s('position'),
+        top: s('top'), right: s('right'),
+        bottom: s('bottom'), left: s('left'),
+        zIndex: s('zIndex'),
       }
     }, '*');
   }, true);
@@ -427,7 +433,6 @@ body{margin:0;padding:0;width:${MOBILE_WIDTH}px;min-height:700px;overflow-x:hidd
 
     const takeScreenshot = useCallback(async () => {
         try {
-            const { default: html2canvas } = await import('html2canvas');
             const body = iframeRef.current?.contentDocument?.body;
             if (!body) { toast.error('Could not capture screenshot'); return; }
             const canvas = await html2canvas(body, { useCORS: true, scale: 2 });
@@ -526,7 +531,10 @@ body{margin:0;padding:0;width:${MOBILE_WIDTH}px;min-height:700px;overflow-x:hidd
             transition={{ type: 'spring', stiffness: 340, damping: 26 }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
-            onClick={() => setSelectedScreenId(screen.id)}
+            onClick={() => {
+                if (isSelected) setSelectedScreenId(null);
+                else setSelectedScreenId(screen.id);
+            }}
         >
             {/* Title bar */}
             <div
@@ -579,7 +587,10 @@ body{margin:0;padding:0;width:${MOBILE_WIDTH}px;min-height:700px;overflow-x:hidd
                     <TooltipTrigger asChild>
                         <Button size="icon" variant="ghost"
                             className={`w-[72px] h-[72px] rounded-full hover:bg-white/10 ${isEditing ? 'text-violet-200' : 'text-white/60 hover:text-white'}`}
-                            onClick={() => { setSelectedScreenId(screen.id); setSidebarMode(isEditing ? 'prompt' : 'editor'); }}>
+                            onClick={() => {
+                                setSelectedScreenId(screen.id);
+                                setSidebarMode(isEditing ? 'prompt' : 'editor');
+                            }}>
                             <MousePointer2 className="size-8" />
                         </Button>
                     </TooltipTrigger>
@@ -668,12 +679,13 @@ body{margin:0;padding:0;width:${MOBILE_WIDTH}px;min-height:700px;overflow-x:hidd
 const nodeTypes: NodeTypes = { screen: ScreenNode };
 
 /* ─── HUD button ─────────────────────────────────────────────────────────────── */
-function HudBtn({ onClick, isDark, title, children }: {
-    onClick: () => void; isDark: boolean; title: string; children: ReactNode;
+function HudBtn({ onClick, isDark, title, children, disabled }: {
+    onClick: () => void; isDark: boolean; title: string; children: ReactNode; disabled?: boolean;
 }) {
     return (
         <button onClick={onClick} title={title}
             className="nodrag nopan touch-manipulation flex-shrink-0 flex items-center justify-center transition-colors"
+            disabled={disabled}
             style={{
                 width: 32, height: 32, borderRadius: 99,
                 border: isDark ? '1px solid rgba(255,255,255,0.08)' : 'none',
@@ -693,6 +705,7 @@ function HudBtn({ onClick, isDark, title, children }: {
 /* ─── CanvasInner ────────────────────────────────────────────────────────────── */
 function CanvasInner() {
     const screens = useAppStore(s => s.screens);
+    const [capturing, setCapturing] = useState(false);
     const theme = useAppStore(s => s.theme);
     const setCanvasZoomStore = useAppStore(s => s.setCanvasZoom);
     const updateScreen = useAppStore(s => s.updateScreen);
@@ -701,6 +714,77 @@ function CanvasInner() {
     const { zoomIn, zoomOut, fitView, getViewport, setViewport } = useReactFlow();
     const zoomIndicatorRef = useRef<HTMLSpanElement>(null);
     const flowRef = useRef<HTMLDivElement>(null);
+
+    const takeCanvasScreenshot = useCallback(async () => {
+        setCapturing(true);
+        try {
+            const { default: html2canvas } = await import('html2canvas');
+            const iframes = flowRef.current?.querySelectorAll<HTMLIFrameElement>('iframe');
+            if (!iframes?.length) { toast.error('No screens to capture'); return; }
+
+            const GAP = 40;
+            const dpr = 3;
+            const captures: { canvas: HTMLCanvasElement; x: number; y: number; w: number; h: number }[] = [];
+
+            for (const iframe of Array.from(iframes)) {
+                const doc = iframe.contentDocument;
+                if (!doc?.body) continue;
+
+                // @ts-ignore
+                if (doc.fonts?.ready) await doc.fonts.ready;
+                await new Promise(r => setTimeout(r, 200));
+
+                const rect = iframe.getBoundingClientRect();
+                const flowRect = flowRef.current!.getBoundingClientRect();
+
+                const canvas = await html2canvas(doc.body, {
+                    backgroundColor: '#ffffff',
+                    useCORS: true,
+                    allowTaint: true,
+                    scale: dpr,
+                    logging: false,
+                });
+
+                captures.push({
+                    canvas,
+                    x: rect.left - flowRect.left,
+                    y: rect.top - flowRect.top,
+                    w: rect.width * dpr,
+                    h: rect.height * dpr,
+                });
+            }
+
+            if (!captures.length) { toast.error('Nothing to capture'); return; }
+
+            const minX = Math.min(...captures.map(c => c.x));
+            const minY = Math.min(...captures.map(c => c.y));
+            const maxX = Math.max(...captures.map(c => c.x + c.w / dpr));
+            const maxY = Math.max(...captures.map(c => c.y + c.h / dpr));
+
+            const out = document.createElement('canvas');
+            out.width = (maxX - minX + GAP * 2) * dpr;
+            out.height = (maxY - minY + GAP * 2) * dpr;
+
+            const ctx = out.getContext('2d')!;
+            ctx.fillStyle = isDark ? '#1a1a1d' : '#f4f4f5';
+            ctx.fillRect(0, 0, out.width, out.height);
+
+            for (const { canvas, x, y, w, h } of captures) {
+                ctx.drawImage(canvas, (x - minX + GAP) * dpr, (y - minY + GAP) * dpr, w, h);
+            }
+
+            const link = document.createElement('a');
+            link.download = 'canvas.png';
+            link.href = out.toDataURL('image/png');
+            link.click();
+            toast.success('Screenshot downloaded!');
+        } catch (e) {
+            console.error(e);
+            toast.error('Screenshot failed');
+        } finally {
+            setCapturing(false);
+        }
+    }, [isDark]);
 
     const toNode = useCallback((s: Screen): Node => ({
         id: s.id,
@@ -869,6 +953,9 @@ function CanvasInner() {
                     </button>
                     <HudBtn onClick={() => zoomIn({ duration: 250 })} isDark={isDark} title="Zoom in">
                         <ZoomIn size={14} />
+                    </HudBtn>
+                    <HudBtn onClick={takeCanvasScreenshot} isDark={isDark} disabled={capturing} title="Screenshot">
+                        {capturing ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
                     </HudBtn>
                     <div style={{ width: 1, height: 16, margin: '0 4px', background: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }} />
                     <HudBtn onClick={handleFitView} isDark={isDark} title="Fit view">
