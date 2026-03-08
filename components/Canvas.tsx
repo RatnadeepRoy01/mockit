@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAppStore, type Screen, type SelectedElement, type ElementStyle } from '@/store/useAppStore';
+import { supabase } from '@/lib/supabaseClient';
 import { toast } from 'sonner';
 
 /* ─── Error Boundary ─────────────────────────────────────────────────────────── */
@@ -54,6 +55,90 @@ class CanvasErrorBoundary extends Component<
         );
         return this.props.children;
     }
+}
+
+/* ─── Skeleton HTML ──────────────────────────────────────────────────────────── */
+function buildSkeletonHtml(): string {
+    return `<!doctype html><html><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{width:360px;background:#ffffff;font-family:system-ui,sans-serif;overflow:hidden}
+  @keyframes shimmer{0%{background-position:-600px 0}100%{background-position:600px 0}}
+  .sk{
+    background:linear-gradient(90deg,#e8e8e8 25%,#bdbdbd 50%,#e8e8e8 75%);
+    background-size:600px 100%;
+    animation:shimmer 1.4s infinite linear;
+    border-radius:5px;
+  }
+  .section{padding:20px 16px;display:flex;flex-direction:column;gap:14px}
+  .row{display:flex;flex-direction:column;gap:8px}
+  .divider{height:1px;background:#f0f0f0;margin:4px 16px}
+</style>
+</head><body>
+
+<!-- Header bar -->
+<div style="padding:18px 16px 14px;border-bottom:1px solid #f0f0f0">
+  <div class="sk" style="height:16px;width:45%"></div>
+</div>
+
+<!-- Section 1: title + 3 lines -->
+<div class="section">
+  <div class="sk" style="height:13px;width:30%"></div>
+  <div class="row">
+    <div class="sk" style="height:11px;width:95%"></div>
+    <div class="sk" style="height:11px;width:88%"></div>
+    <div class="sk" style="height:11px;width:72%"></div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- Section 2: sub-heading + lines -->
+<div class="section">
+  <div class="sk" style="height:13px;width:38%"></div>
+  <div class="row">
+    <div class="sk" style="height:11px;width:90%"></div>
+    <div class="sk" style="height:11px;width:80%"></div>
+  </div>
+  <div class="sk" style="height:11px;width:55%"></div>
+</div>
+
+<div class="divider"></div>
+
+<!-- Section 3: list-like rows -->
+<div class="section">
+  <div class="sk" style="height:13px;width:28%"></div>
+  ${[92, 78, 85, 65].map(() => `
+  <div class="row" style="gap:6px">
+    <div class="sk" style="height:11px;width:__W__%"></div>
+  </div>`).join('').replace(/__W__/g, '').replace(/width:%;/g, () => {
+        const ws = [92, 78, 85, 65];
+        return `width:${ws[Math.floor(Math.random() * ws.length)]}%;`;
+    })}
+  <div class="sk" style="height:11px;width:92%"></div>
+  <div class="sk" style="height:11px;width:78%"></div>
+  <div class="sk" style="height:11px;width:85%"></div>
+  <div class="sk" style="height:11px;width:65%"></div>
+</div>
+
+<div class="divider"></div>
+
+<!-- Section 4 -->
+<div class="section">
+  <div class="sk" style="height:13px;width:33%"></div>
+  <div class="row">
+    <div class="sk" style="height:11px;width:88%"></div>
+    <div class="sk" style="height:11px;width:70%"></div>
+  </div>
+</div>
+
+<!-- Label -->
+<div style="padding:8px 16px">
+</div>
+
+</body></html>`;
 }
 
 /* ─── Picker script ──────────────────────────────────────────────────────────── */
@@ -129,14 +214,20 @@ function buildPickerScript(screenId: string): string {
       if (e.data.textContent && el.childNodes.length === 1 && el.childNodes[0].nodeType === 3) {
         el.textContent = e.data.textContent;
       }
+
       clearHighlights();
+      document.querySelectorAll('[data-mk-prev-outline]').forEach(function(n) {
+        n.removeAttribute('data-mk-prev-outline');
+      });
+      var cleanHtml = document.body.innerHTML;
+      // Re-highlight the element visually AFTER snapshot (UI feedback only)
       el.setAttribute('data-mk-sel', 'true');
       el.setAttribute('data-mk-prev-outline', el.style.outline || '');
       el.style.outline = '2.5px solid #7c3aed';
       el.style.outlineOffset = '2px';
       window.parent.postMessage({
         type: '__mockit_html_update__', screenId: '${screenId}',
-        html: '<!DOCTYPE html>\\n' + document.documentElement.outerHTML,
+        html: cleanHtml,
       }, '*');
     }
   };
@@ -148,12 +239,32 @@ function buildPickerScript(screenId: string): string {
 function buildHeightScript(screenId: string): string {
     return `
 (function() {
+  var _pending = false;
+
   function report() {
-    var h = document.documentElement.scrollHeight || document.body.scrollHeight;
-    window.parent.postMessage({ type: '__mockit_height__', screenId: '${screenId}', height: h }, '*');
+    if (_pending) return;
+    _pending = true;
+    requestAnimationFrame(function() {
+      // body.scrollHeight gives true content height because html has overflow:hidden,
+      // which prevents the iframe viewport from inflating the measurement,
+      // and prevents outline overflow from leaking into the scroll area.
+      var h = document.body.scrollHeight;
+      if (h > 0) {
+        window.parent.postMessage({ type: '__mockit_height__', screenId: '${screenId}', height: h }, '*');
+      }
+      _pending = false;
+    });
   }
+
   report();
-  new MutationObserver(report).observe(document.body, { childList: true, subtree: true, attributes: true });
+
+  // Only structural DOM changes trigger re-measure.
+  // Attribute/style mutations from the picker (outline, data-mk-*) are ignored.
+  new MutationObserver(function(mutations) {
+    for (var i = 0; i < mutations.length; i++) {
+      if (mutations[i].type === 'childList') { report(); return; }
+    }
+  }).observe(document.body, { childList: true, subtree: true });
 })();
 `.trim();
 }
@@ -169,6 +280,7 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
     const setSelectedElement = useAppStore(s => s.setSelectedElement);
     const setHtmlViewModalScreenId = useAppStore(s => s.setHtmlViewModalScreenId);
     const updateScreenHtml = useAppStore(s => s.updateScreenHtml);
+    const projectId = useAppStore(s => s.projectId);
     const isSelected = useAppStore(s => s.selectedScreenId === screen.id);
     const isEditing = useAppStore(s => s.sidebarMode === 'editor' && s.selectedScreenId === screen.id);
 
@@ -181,28 +293,35 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
     const [renaming, setRenaming] = useState(false);
     const [nameValue, setNameValue] = useState(screen.id);
     const [isHovered, setIsHovered] = useState(false);
-    const [contentHeight, setContentHeight] = useState(screen.height ?? 800);
+    const [contentHeight, setContentHeight] = useState(screen.height ?? 700);
 
     const MOBILE_WIDTH = 360;
     const frameWidth = screen.width ?? MOBILE_WIDTH;
     const iframeScale = frameWidth / MOBILE_WIDTH;
     const scaledHeight = contentHeight * iframeScale;
 
+    const isEmpty = !screen.html || screen.html.trim() === '';
+
     const injectScripts = useCallback(() => {
         const doc = iframeRef.current?.contentDocument;
         if (!doc?.head) return;
 
+        // Always re-inject picker script (stateless, safe to replace)
         doc.querySelectorAll('[data-mk-script]').forEach(n => n.remove());
         const ps = doc.createElement('script');
         ps.setAttribute('data-mk-script', 'true');
         ps.textContent = buildPickerScript(screen.id);
         doc.head.appendChild(ps);
 
-        doc.querySelectorAll('[data-mk-height]').forEach(n => n.remove());
-        const hs = doc.createElement('script');
-        hs.setAttribute('data-mk-height', 'true');
-        hs.textContent = buildHeightScript(screen.id);
-        doc.head.appendChild(hs);
+        // Only inject height script once per document load.
+        // Re-injecting fires report() while picker outline is still on the DOM
+        // → spurious height inflation on every element click.
+        if (!doc.head.querySelector('[data-mk-height]')) {
+            const hs = doc.createElement('script');
+            hs.setAttribute('data-mk-height', 'true');
+            hs.textContent = buildHeightScript(screen.id);
+            doc.head.appendChild(hs);
+        }
 
         iframeRef.current?.contentWindow?.postMessage(
             { type: '__mockit_set_picker__', screenId: screen.id, active: isEditingRef.current }, '*'
@@ -210,17 +329,33 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
     }, [screen.id]);
 
     useEffect(() => {
-
         if (skipRewriteRef.current) { skipRewriteRef.current = false; return; }
         const iframe = iframeRef.current;
         const doc = iframe?.contentDocument;
         if (!doc) return;
 
+        // Empty screen → show animated skeleton, no picker needed
+        if (isEmpty) {
+            const onLoad = () => {
+                const hs = doc.createElement('script');
+                hs.textContent = buildHeightScript(screen.id);
+                doc.head?.appendChild(hs);
+            };
+            iframe?.addEventListener('load', onLoad, { once: true });
+            doc.open();
+            doc.write(buildSkeletonHtml());
+            doc.close();
+            return () => iframe?.removeEventListener('load', onLoad);
+        }
+
         let body = screen.html;
         const m = screen.html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
         if (m) body = m[1];
 
-        // Attach BEFORE doc.open() — guarantees we catch the load event
+        const cleanBody = (body || '')
+            .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+
         const onLoad = () => injectScripts();
         iframe?.addEventListener('load', onLoad, { once: true });
 
@@ -234,19 +369,26 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
-<style>*{box-sizing:border-box}html,body{margin:0;padding:0;width:${MOBILE_WIDTH}px;overflow-x:hidden;overflow-y:visible;background:#fff}</style>
-</head><body class="bg-white text-gray-900 w-full">${body || ''}</body></html>`);
+<style>
+*{box-sizing:border-box}
+html{margin:0;padding:0;width:${MOBILE_WIDTH}px;overflow:hidden}
+body{margin:0;padding:0;width:${MOBILE_WIDTH}px;min-height:700px;overflow-x:hidden;overflow-y:hidden;background:#fff}
+.h-screen,.min-h-screen,.h-full{height:auto!important;min-height:0!important}
+[style*="min-height: 100vh"],[style*="min-height:100vh"],[style*="height: 100vh"],[style*="height:100vh"]{height:auto!important;min-height:0!important}
+</style>
+</head><body class="bg-white text-gray-900 w-full">${cleanBody}</body></html>`);
         doc.close();
 
         return () => iframe?.removeEventListener('load', onLoad);
-    }, [screen.html, injectScripts]);
+    }, [screen.html, isEmpty, injectScripts]);
 
     // ── sync picker active state whenever isEditing changes ──
     useEffect(() => {
+        if (isEmpty) return;
         iframeRef.current?.contentWindow?.postMessage(
             { type: '__mockit_set_picker__', screenId: screen.id, active: isEditing }, '*'
         );
-    }, [isEditing, screen.id]);
+    }, [isEditing, screen.id, isEmpty]);
 
     // ── parent-side message handler ──
     useEffect(() => {
@@ -268,7 +410,7 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
                 updateScreenHtml(screen.id, e.data.html as string);
             }
             if (e.data.type === '__mockit_height__') {
-                const h = Math.max(200, e.data.height as number);
+                const h = Math.max(700, e.data.height as number);
                 setContentHeight(h);
                 updateScreen(screen.id, { height: h });
             }
@@ -291,11 +433,86 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
         } catch { toast.error('Screenshot failed'); }
     }, [screen.id]);
 
-    const submitRename = () => { updateScreen(screen.id, { id: screen.id }); setRenaming(false); };
+    const submitRename = async () => {
+        const oldId = screen.id;
+        const newId = nameValue.trim();
+
+        if (!newId || newId === oldId) {
+            setRenaming(false);
+            setNameValue(oldId);
+            return;
+        }
+
+        // Optimistic local update
+        updateScreen(oldId, { id: newId });
+        setRenaming(false);
+
+        if (projectId) {
+            try {
+                // Fetch current project content directly
+                const { data: project, error: fetchErr } = await supabase
+                    .from('projects')
+                    .select('content')
+                    .eq('id', projectId)
+                    .single();
+
+                if (fetchErr || !project) throw fetchErr;
+
+                const content = project.content || { html: [], prompt: [] };
+                if (content.html) {
+                    let found = false;
+                    for (const s of content.html) {
+                        if (s.name === oldId) {
+                            s.name = newId;
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (found) {
+                        const { error: updateErr } = await supabase
+                            .from('projects')
+                            .update({ content })
+                            .eq('id', projectId);
+                        if (updateErr) throw updateErr;
+                    }
+                }
+            } catch (err) {
+                // Revert string on failure
+                updateScreen(newId, { id: oldId });
+                toast.error('Failed to rename screen on server');
+            }
+        }
+    };
+
+    const handleDelete = async () => {
+        deleteScreen(screen.id);
+        toast.success('Screen removed');
+
+        if (projectId) {
+            try {
+                const { data: project, error: fetchErr } = await supabase
+                    .from('projects')
+                    .select('content')
+                    .eq('id', projectId)
+                    .single();
+
+                if (fetchErr || !project) throw fetchErr;
+
+                const content = project.content || { html: [], prompt: [] };
+                if (content.html) {
+                    content.html = content.html.filter((s: { name: string, code: string }) => s.name !== screen.id);
+                    await supabase.from('projects').update({ content }).eq('id', projectId);
+                }
+            } catch {
+                toast.error('Failed to sync deletion with server');
+            }
+        }
+    };
 
     return (
         <motion.div
-            className="drag-handle flex flex-col"
+            className="drag-handle flex flex-col relative"
             style={{ width: frameWidth, height: scaledHeight + 40 }}
             initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -335,62 +552,71 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
                             Editing
                         </Badge>
                     )}
+                    {isEmpty && (
+                        <Badge className="bg-zinc-700/60 text-zinc-400 border-0 text-[10px] py-0 px-1.5 flex-shrink-0">
+                            Empty
+                        </Badge>
+                    )}
                 </div>
 
-                <div
-                    className={`nodrag nopan flex items-center gap-0.5 transition-opacity duration-150
-                        ${isHovered || isSelected ? 'opacity-100' : 'opacity-0'}`}
-                    onClick={e => e.stopPropagation()}
-                >
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button size="icon" variant="ghost"
-                                className={`h-6 w-6 hover:bg-white/10 ${isEditing ? 'text-violet-200' : 'text-white/60 hover:text-white'}`}
-                                onClick={() => { setSelectedScreenId(screen.id); setSidebarMode(isEditing ? 'prompt' : 'editor'); }}>
-                                <MousePointer2 className="w-3.5 h-3.5" />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">{isEditing ? 'Exit Editor' : 'Element Editor'}</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-6 w-6 text-white/60 hover:text-white hover:bg-white/10"
-                                onClick={() => setHtmlViewModalScreenId(screen.id)}>
-                                <Code2 className="w-3.5 h-3.5" />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">View HTML</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-6 w-6 text-white/60 hover:text-white hover:bg-white/10"
-                                onClick={takeScreenshot}>
-                                <Camera className="w-3.5 h-3.5" />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Screenshot</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-6 w-6 text-white/60 hover:text-red-400 hover:bg-red-500/10"
-                                onClick={() => { deleteScreen(screen.id); toast.success('Screen removed'); }}>
-                                <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Delete</TooltipContent>
-                    </Tooltip>
-                </div>
+            </div>
+
+            {/* Right side floating tools (pill) */}
+            <div
+                className={`nodrag nopan absolute top-1/2 -right-12 -translate-y-1/2 flex flex-col items-center gap-5 py-8 px-4 transition-all duration-300 z-50
+                    ${isSelected ? 'bg-violet-600' : 'bg-[#1e1e2e]'}
+                    rounded-full border ${isSelected ? 'border-violet-500/50' : 'border-white/10'} shadow-2xl
+                    ${isHovered || isSelected ? 'opacity-100 translate-x-full' : 'opacity-0 translate-x-[80%] pointer-events-none'}`}
+                onClick={e => e.stopPropagation()}
+            >
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button size="icon" variant="ghost"
+                            className={`w-[72px] h-[72px] rounded-full hover:bg-white/10 ${isEditing ? 'text-violet-200' : 'text-white/60 hover:text-white'}`}
+                            onClick={() => { setSelectedScreenId(screen.id); setSidebarMode(isEditing ? 'prompt' : 'editor'); }}>
+                            <MousePointer2 className="size-8" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={16}>{isEditing ? 'Exit Editor' : 'Element Editor'}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button size="icon" variant="ghost" className="w-[72px] h-[72px] rounded-full text-white/60 hover:text-white hover:bg-white/10"
+                            onClick={() => setHtmlViewModalScreenId(screen.id)}>
+                            <Code2 className="size-8" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={16}>View HTML</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button size="icon" variant="ghost" className="w-[72px] h-[72px] rounded-full text-white/60 hover:text-white hover:bg-white/10"
+                            onClick={takeScreenshot}>
+                            <Camera className="size-8" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={16}>Screenshot</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button size="icon" variant="ghost" className="w-[72px] h-[72px] rounded-full text-white/60 hover:text-red-400 hover:bg-red-500/10"
+                            onClick={handleDelete}>
+                            <Trash2 className="size-8" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={16}>Delete</TooltipContent>
+                </Tooltip>
             </div>
 
             {/* iframe body */}
             <div
-                className={`relative rounded-b-xl border-2 transition-all duration-200 overflow-hidden
+                className={`relative rounded-b-xl border-2 transition-all duration-200 overflow-hidden bg-white
                     ${isEditing
                         ? 'border-violet-500 shadow-lg shadow-violet-500/25 ring-1 ring-violet-500/20'
                         : isSelected ? 'border-violet-500/40' : 'border-white/10'}`}
                 style={{ height: scaledHeight }}
             >
-                {!isEditing && (
+                {(!isEditing || isEmpty) && (
                     <div className="absolute inset-0 z-10 cursor-grab" />
                 )}
 
@@ -404,15 +630,15 @@ const ScreenNode = memo(function ScreenNode({ data }: NodeProps) {
                         height: contentHeight,
                         transform: `scale(${iframeScale})`,
                         transformOrigin: 'top left',
-                        pointerEvents: isEditing ? 'auto' : 'none',
-                        cursor: isEditing ? 'crosshair' : 'default',
+                        pointerEvents: isEditing && !isEmpty ? 'auto' : 'none',
+                        cursor: isEditing && !isEmpty ? 'crosshair' : 'default',
                         border: 'none',
                         display: 'block',
                     }}
                 />
 
                 <AnimatePresence>
-                    {isEditing && (
+                    {isEditing && !isEmpty && (
                         <motion.div
                             initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
                             className="absolute top-2 left-1/2 -translate-x-1/2 pointer-events-none z-20"

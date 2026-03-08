@@ -8,6 +8,7 @@ interface Profile {
   full_name: string;
   avatar_url: string;
   plan: 'free' | 'pro';
+  credits: number;
 }
 
 interface AuthState {

@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Copy, Check } from 'lucide-react';
+import { Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 import {
     Dialog,
@@ -9,7 +9,6 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/store/useAppStore';
 import { toast } from 'sonner';
@@ -22,7 +21,6 @@ export default function HtmlViewModal() {
 
     const screen = screens.find((s) => s.id === htmlViewModalScreenId);
 
-    // Extract body content if it's a full document
     let bodyContent = screen?.html || '';
     const bodyMatch = bodyContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
     if (bodyMatch) {
@@ -35,13 +33,10 @@ export default function HtmlViewModal() {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Google Font -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-
-  <!-- Tailwind + Iconify -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
   <style>
@@ -54,6 +49,35 @@ export default function HtmlViewModal() {
 </html>
     `.trim();
 
+    // Pretty-format the HTML for display only
+    const formatHtml = (html: string): string => {
+        let formatted = '';
+        let indent = 0;
+        const tab = '  ';
+
+        const tokens = html.split(/(<[^>]+>)/g).filter(Boolean);
+
+        for (const token of tokens) {
+            const isClosing = /^<\//.test(token);
+            const isSelfClosing = /\/>$/.test(token) || /^<(meta|link|br|hr|img|input|script|style)[^>]*>$/i.test(token);
+            const isOpening = /^<[^/]/.test(token) && !isSelfClosing;
+            const isDoctype = /^<!/.test(token);
+
+            const text = token.trim();
+            if (!text) continue;
+
+            if (isClosing) indent = Math.max(0, indent - 1);
+
+            formatted += `${tab.repeat(indent)}${text}\n`;
+
+            if (isOpening && !isSelfClosing && !isDoctype) indent++;
+        }
+
+        return formatted.trim();
+    };
+
+    const displayHtml = formatHtml(fullHtml);
+
     const open = !!htmlViewModalScreenId && !!screen;
 
     const copyHtml = async () => {
@@ -63,7 +87,6 @@ export default function HtmlViewModal() {
         toast.success('HTML copied to clipboard');
         setTimeout(() => setCopied(false), 2000);
     };
-
 
     return (
         <Dialog open={open} onOpenChange={(v) => { if (!v) setHtmlViewModalScreenId(null); }}>
@@ -86,17 +109,16 @@ export default function HtmlViewModal() {
                     </Button>
                 </DialogHeader>
 
-                <ScrollArea className="h-[520px]">
-                    <pre className="p-6 text-xs text-muted-foreground font-mono leading-relaxed whitespace-pre-wrap break-words">
-                        {fullHtml}
+                <div className="h-[520px] overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    <pre className="p-6 text-[11px] text-muted-foreground font-mono leading-5 tracking-wide whitespace-pre-wrap break-all w-full">
+                        {displayHtml}
                     </pre>
-                </ScrollArea>
+                </div>
 
                 <div className="px-6 py-3 border-t border-border bg-muted/30 flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">
                         {fullHtml.length.toLocaleString() ?? 0} characters
                     </span>
-
                     <Button
                         variant="ghost"
                         size="sm"

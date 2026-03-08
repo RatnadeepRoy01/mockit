@@ -4,7 +4,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Wand2, MousePointer2, Send, Loader2,
-    Bot, User, Sparkles, Type, Palette,
+    Check, Bot, User, Sparkles, Type, Palette,
     AlignLeft, AlignCenter, AlignRight,
     Minus, Plus, Bold, Italic, Underline,
     RotateCcw, Sliders,
@@ -52,6 +52,25 @@ function PromptPanel({ projectId }: { projectId: string }) {
     const selectedScreenId = useAppStore(state => state.selectedScreenId);
     const setSelectedScreenId = useAppStore(state => state.setSelectedScreenId);
     const screens = useAppStore(state => state.screens);
+    const [trackedScreenIds, setTrackedScreenIds] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (isAiLoading) {
+            // Track screens that have no HTML (new ones)
+            const emptyScreenIds = screens.filter(s => !s.html).map(s => s.id);
+            if (emptyScreenIds.length > 0) {
+                setTrackedScreenIds(prev => {
+                    const newIds = emptyScreenIds.filter(id => !prev.includes(id));
+                    return newIds.length > 0 ? [...prev, ...newIds] : prev;
+                });
+            }
+        } else {
+            // Reset when generation finishes
+            if (trackedScreenIds.length > 0) setTrackedScreenIds([]);
+        }
+    }, [isAiLoading, screens, trackedScreenIds]);
+
+    const displayScreens = screens.filter(s => trackedScreenIds.includes(s.id));
 
     const [input, setInput] = useState('');
     const bottomRef = useRef<HTMLDivElement>(null);
@@ -134,14 +153,43 @@ function PromptPanel({ projectId }: { projectId: string }) {
                     ))}
 
                     {isAiLoading && (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-2.5">
-                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
-                                <Bot className="w-3.5 h-3.5 text-white" />
+                        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-3">
+                            <div className="flex gap-2.5">
+                                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
+                                    <Bot className="w-3.5 h-3.5 text-white" />
+                                </div>
+                                <div className="bg-black/5 dark:bg-white/7 border border-black/10 dark:border-white/10 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-2">
+                                    <Loader2 className="w-3.5 h-3.5 text-violet-500 animate-spin" />
+                                    <span className="text-xs text-muted-foreground">Generating screens…</span>
+                                </div>
                             </div>
-                            <div className="bg-black/5 dark:bg-white/7 border border-black/10 dark:border-white/10 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-2">
-                                <Loader2 className="w-3.5 h-3.5 text-violet-500 animate-spin" />
-                                <span className="text-xs text-muted-foreground">Generating…</span>
-                            </div>
+
+                            {/* Screen Progress Blocks - Only show if we have screens arriving */}
+                            {displayScreens.length > 0 && (
+                                <div className="grid grid-cols-2 gap-2 ml-9">
+                                    {displayScreens.map((screen) => (
+                                        <motion.div
+                                            key={screen.id}
+                                            initial={{ opacity: 0, scale: 0.95 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-all duration-300
+                                                ${screen.html
+                                                    ? 'bg-green-500/5 border-green-500/20 text-green-700 dark:text-green-400'
+                                                    : 'bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10 text-muted-foreground'}`}
+                                        >
+                                            <div className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center
+                                                ${screen.html ? 'bg-green-500/20' : 'bg-black/10 dark:bg-white/10'}`}>
+                                                {screen.html ? (
+                                                    <Check className="w-3 h-3 text-green-600 dark:text-green-400" />
+                                                ) : (
+                                                    <Loader2 className="w-3 h-3 text-violet-500 animate-spin" />
+                                                )}
+                                            </div>
+                                            <span className="text-[11px] font-medium truncate">{screen.id}</span>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            )}
                         </motion.div>
                     )}
                     <div ref={bottomRef} />

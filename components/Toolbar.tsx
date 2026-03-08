@@ -4,6 +4,15 @@ import { Sun, Moon, Menu, LayoutGrid, ChevronDown, ZoomIn, ZoomOut, Maximize, Me
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useRouter } from 'next/navigation';
@@ -125,8 +134,8 @@ export default function Toolbar({ onToggleChat }: { onToggleChat?: () => void })
                 {loading ? (
                     <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid rgba(255,107,53,0.2)', borderTopColor: '#ff6b35', animation: 'spin 0.6s linear infinite' }} />
                 ) : user ? (
-                    <Tooltip>
-                        <TooltipTrigger asChild>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
                             <div style={{
                                 display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer',
                                 padding: '2px 6px 2px 3px', borderRadius: 20,
@@ -148,19 +157,45 @@ export default function Toolbar({ onToggleChat }: { onToggleChat?: () => void })
                                 </span>
                                 <ChevronDown size={8} style={{ color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)', flexShrink: 0 }} />
                             </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="p-3 flex flex-col gap-2" style={{ minWidth: 150 }}>
-                            <div className="flex items-center gap-2">
-                                {user.user_metadata?.avatar_url && <img src={user.user_metadata.avatar_url} className="w-5 h-5 rounded-full" alt="" />}
-                                <span className="text-xs font-semibold">{user.user_metadata?.full_name || user.email}</span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className={`w-56 p-2 rounded-xl ${isDark ? 'border-white/5 bg-[#1e1e2e] text-white' : 'border-black/5 bg-white text-black shadow-lg'}`}>
+                            <div className="flex items-center gap-2 mb-3 mt-1 px-1">
+                                {user.user_metadata?.avatar_url ? (
+                                    <img src={user.user_metadata.avatar_url} className={`w-8 h-8 rounded-full border ${isDark ? 'border-white/10' : 'border-black/10'}`} alt="" />
+                                ) : (
+                                    <div className="w-8 h-8 rounded-full bg-linear-to-br from-[#ff6b35] to-[#f7c59f] flex items-center justify-center font-bold text-[#1a0a00]">
+                                        {user.email?.[0]?.toUpperCase()}
+                                    </div>
+                                )}
+                                <div className="flex flex-col min-w-0">
+                                    <span className={`text-sm font-semibold truncate leading-tight ${isDark ? 'text-white/90' : 'text-black/90'}`}>
+                                        {user.user_metadata?.full_name || user.email}
+                                    </span>
+                                    <span className={`text-[11px] truncate ${isDark ? 'text-white/50' : 'text-black/50'}`}>
+                                        {user.email}
+                                    </span>
+                                </div>
                             </div>
-                            <span className="text-xs text-muted-foreground">{user.email}</span>
-                            <Separator />
-                            <Button variant="ghost" size="sm" className="p-0 h-auto text-xs text-red-500 hover:text-red-400" onClick={() => signOut()}>
+
+                            <DropdownMenuSeparator className={isDark ? 'bg-white/5 my-2' : 'bg-black/5 my-2'} />
+
+                            <div className="px-1 py-1 flex items-center justify-between mb-1">
+                                <span className={`text-xs font-medium ${isDark ? 'text-white/70' : 'text-black/70'}`}>Credits</span>
+                                <Badge variant="secondary" className={`px-2 py-0 h-5 font-mono text-[10px] bg-violet-500/10 border-violet-500/20 ${isDark ? 'text-violet-400' : 'text-violet-600'}`}>
+                                    {useAuthStore.getState().profile?.credits ?? 0}
+                                </Badge>
+                            </div>
+
+                            <DropdownMenuSeparator className={isDark ? 'bg-white/5 my-2' : 'bg-black/5 my-2'} />
+
+                            <DropdownMenuItem
+                                className={`cursor-pointer text-xs justify-center font-medium rounded-lg ${isDark ? 'text-red-400 focus:text-red-300 focus:bg-red-500/10' : 'text-red-500 focus:text-red-600 focus:bg-red-500/10'}`}
+                                onClick={() => signOut()}
+                            >
                                 Sign Out
-                            </Button>
-                        </TooltipContent>
-                    </Tooltip>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 ) : (
                     <button
                         onClick={() => router.push('/login')}
