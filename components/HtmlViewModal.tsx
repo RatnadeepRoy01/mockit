@@ -91,14 +91,15 @@ export default function HtmlViewModal() {
         <Dialog open={open} onOpenChange={(v) => { if (!v) setHtmlViewModalScreenId(null); }}>
             <DialogContent className="
                 w-full bg-background border-border text-foreground p-0 gap-0 overflow-hidden rounded-2xl
-                mx-4 sm:mx-auto
+                fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2
                 max-w-[calc(100vw-32px)] sm:max-w-3xl
-                max-h-[calc(100dvh-32px)] sm:max-h-[90vh]
+                max-h-[calc(100svh-32px)] sm:max-h-[90vh]
+                flex flex-col
             ">
-                <DialogHeader className="px-6 py-4 border-b border-border flex-row items-center justify-between space-y-0">
+                <DialogHeader className="px-6 py-4 border-b border-border flex-row items-center justify-between space-y-0 shrink-0">
                     <div className="flex items-center gap-3">
-                        <DialogTitle className="text-base font-bold">{screen?.id}</DialogTitle>
-                        <Badge className="bg-violet-500/10 text-violet-500 border-violet-500/20 text-xs">
+                        <DialogTitle className="text-base md:text-sm font-bold">{screen?.id}</DialogTitle>
+                        <Badge className="hidden sm:inline-flex bg-violet-500/10 text-violet-500 border-violet-500/20 text-xs">
                             Read-only
                         </Badge>
                     </div>
@@ -115,7 +116,8 @@ export default function HtmlViewModal() {
 
                 <div className="
                     overflow-y-auto overflow-x-hidden
-                    h-[calc(100dvh-200px)] sm:h-[520px]
+                    flex-1 min-h-0
+                    sm:h-[520px] sm:flex-none
                     [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]
                 ">
                     <pre className="p-6 text-[11px] text-muted-foreground font-mono leading-5 tracking-wide whitespace-pre-wrap break-all w-full">
@@ -123,7 +125,7 @@ export default function HtmlViewModal() {
                     </pre>
                 </div>
 
-                <div className="px-6 py-3 border-t border-border bg-muted/30 flex items-center justify-between">
+                <div className="px-6 border-t border-border bg-muted/30 flex items-center justify-between shrink-0 min-h-[48px]">
                     <span className="text-xs text-muted-foreground">
                         {fullHtml.length.toLocaleString() ?? 0} characters
                     </span>
