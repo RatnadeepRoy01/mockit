@@ -70,6 +70,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           updated_at: new Date().toISOString(),
           // Don't overwrite plan if it exists
           plan: existingProfile?.plan || 'free',
+          credits: existingProfile?.credits ?? 100,
         }, {
           onConflict: 'id'
         })
