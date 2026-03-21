@@ -337,14 +337,30 @@ export default function LandingPage() {
 
         {/* CTAs */}
         {visible && (
-          <div className="fade-up d4 flex flex-wrap items-center justify-center gap-3">
-            <button className="cta-btn" onClick={handleStart}>
-              Start creating
-              <ArrowRight size={16} />
-            </button>
-            <button className="ghost-btn" onClick={() => document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' })}>
-              See how it works
-            </button>
+          <div className="fade-up d4 flex flex-col items-center justify-center gap-4">
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button className="cta-btn" onClick={handleStart}>
+                Start creating
+                <ArrowRight size={16} />
+              </button>
+              <button className="ghost-btn" onClick={() => document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' })}>
+                See how it works
+              </button>
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: 'rgba(255,160,122,0.8)',
+                background: 'rgba(255,160,122,0.1)',
+                padding: '8px 16px',
+                borderRadius: 8,
+                border: '1px solid rgba(255,160,122,0.2)',
+                marginTop: 8,
+                textAlign: 'center'
+              }}
+            >
+              Notice: We are currently using a Free tier Groq API key, generation times may be hindered or subject to rate limits.
+            </div>
           </div>
         )}
 
